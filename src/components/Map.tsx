@@ -174,18 +174,6 @@ export default function Map({
     setResults([]);
     setIsOpen(false);
 
-    // Immediate UI update while reverse-geocoding validates
-    onSelect({
-      lat,
-      lng,
-      name: 'Analyzing GPS Parcel...',
-      emirate: displayName || `GIS Coordinate (${lat}°N, ${lng}°E)`,
-      soilSummary: 'Reading satellite telemetry and soil classification...',
-      aquiferNote: 'Checking aquifer depth and urban zoning boundaries...',
-      isFarmable: true,
-      zoom: 14,
-    });
-
     // Validate land use for chosen coordinates
     const validated = await validateLandUse(lat, lng, displayName);
     validated.zoom = 14;

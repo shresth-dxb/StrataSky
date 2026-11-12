@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import {
   ArrowLeft,
@@ -45,146 +45,6 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
   // Parcel Analysis State
   const isAnalyzing =
     selected.name.includes('Analyzing') || loadingNasa || analyzingHold;
-
-  // Full-Screen Satellite Analysis State
-  const [fullScreenOverlay, setFullScreenOverlay] = useState<{
-    visible: boolean;
-    lat: number;
-    lng: number;
-    name: string;
-    isRedPhase: boolean;
-    isNonArable: boolean;
-  }>({
-    visible: false,
-    lat: 24.2075,
-    lng: 55.7447,
-    name: '',
-    isRedPhase: false,
-    isNonArable: false,
-  });
-
-  const overlayTimersRef = useRef<{
-    tRed?: ReturnType<typeof setTimeout>;
-    tHide?: ReturnType<typeof setTimeout>;
-    startTime: number;
-    activeSeq: number;
-  }>({
-    startTime: 0,
-    activeSeq: 0,
-  });
-
-  const triggerFullScreenAnalysis = useCallback(
-    (lat: number, lng: number, knownFarmable?: boolean) => {
-      if (overlayTimersRef.current.tRed) clearTimeout(overlayTimersRef.current.tRed);
-      if (overlayTimersRef.current.tHide) clearTimeout(overlayTimersRef.current.tHide);
-
-      const seq = ++overlayTimersRef.current.activeSeq;
-      const startTime = Date.now();
-      overlayTimersRef.current.startTime = startTime;
-
-      setFullScreenOverlay({
-        visible: true,
-        lat,
-        lng,
-        name: 'Analyzing GPS Parcel...',
-        isRedPhase: false,
-        isNonArable: knownFarmable === false,
-      });
-
-      if (knownFarmable === false) {
-        // Non-arable land: show for 3.0 seconds, text becomes red for 0.5 seconds (at 2.5s)
-        overlayTimersRef.current.tRed = setTimeout(() => {
-          if (overlayTimersRef.current.activeSeq === seq) {
-            setFullScreenOverlay((prev) => ({
-              ...prev,
-              isRedPhase: true,
-              isNonArable: true,
-            }));
-          }
-        }, 2500);
-
-        overlayTimersRef.current.tHide = setTimeout(() => {
-          if (overlayTimersRef.current.activeSeq === seq) {
-            setFullScreenOverlay((prev) => ({
-              ...prev,
-              visible: false,
-              isRedPhase: false,
-            }));
-          }
-        }, 3000);
-      } else {
-        // Arable land: show for 2 seconds total then hide
-        overlayTimersRef.current.tHide = setTimeout(() => {
-          if (overlayTimersRef.current.activeSeq === seq) {
-            setFullScreenOverlay((prev) => ({
-              ...prev,
-              visible: false,
-            }));
-          }
-        }, 2000);
-      }
-    },
-    []
-  );
-
-  const handleZoneSelect = useCallback(
-    (zone: UaeFarmZone) => {
-      setSelected(zone);
-
-      const isClickStart = zone.name.includes('Analyzing');
-      if (isClickStart) {
-        // Map click or search select triggered! Immediately show full-screen overlay
-        triggerFullScreenAnalysis(zone.lat, zone.lng);
-      } else {
-        // Land validation completed
-        const seq = overlayTimersRef.current.activeSeq;
-        const elapsed = Date.now() - (overlayTimersRef.current.startTime || Date.now());
-        const isNonArable = zone.isFarmable === false;
-
-        if (overlayTimersRef.current.tRed) clearTimeout(overlayTimersRef.current.tRed);
-        if (overlayTimersRef.current.tHide) clearTimeout(overlayTimersRef.current.tHide);
-
-        if (isNonArable) {
-          // Show for 3 seconds total, text becomes red for 0.5 seconds (at 2.5s)
-          const delayUntilRed = Math.max(0, 2500 - elapsed);
-          const delayUntilHide = Math.max(500, 3000 - elapsed);
-
-          overlayTimersRef.current.tRed = setTimeout(() => {
-            if (overlayTimersRef.current.activeSeq === seq) {
-              setFullScreenOverlay((prev) => ({
-                ...prev,
-                isRedPhase: true,
-                isNonArable: true,
-              }));
-            }
-          }, delayUntilRed);
-
-          overlayTimersRef.current.tHide = setTimeout(() => {
-            if (overlayTimersRef.current.activeSeq === seq) {
-              setFullScreenOverlay((prev) => ({
-                ...prev,
-                visible: false,
-                isRedPhase: false,
-              }));
-            }
-          }, delayUntilHide);
-        } else {
-          // Arable land: show for 2 seconds total then hide
-          const delayUntilHide = Math.max(300, 2000 - elapsed);
-
-          overlayTimersRef.current.tHide = setTimeout(() => {
-            if (overlayTimersRef.current.activeSeq === seq) {
-              setFullScreenOverlay((prev) => ({
-                ...prev,
-                visible: false,
-              }));
-            }
-          }, delayUntilHide);
-        }
-      }
-    },
-    [triggerFullScreenAnalysis]
-  );
 
   // Analysis Steps progression
   const [analysisSteps, setAnalysisSteps] = useState<string[]>([
@@ -386,10 +246,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
             return (
               <button
                 key={preset.name}
-                onClick={() => {
-                  triggerFullScreenAnalysis(preset.lat, preset.lng, true);
-                  handleZoneSelect({ ...preset, isFarmable: true });
-                }}
+                onClick={() => setSelected({ ...preset, isFarmable: true })}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
                   isCurrent
                     ? 'bg-[#34C759] text-white shadow-sm'
@@ -415,134 +272,40 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
               </span>
             </div>
           )}
-          <DynamicMap onSelect={handleZoneSelect} selected={selected} />
+          <DynamicMap onSelect={setSelected} selected={selected} />
         </div>
 
         {/* Telemetry & Analysis Panel */}
-        <div className="lg:col-span-5 h-full relative">
-          {/* Full Right-Panel Satellite Analysis Overlay */}
-          {fullScreenOverlay.visible && (
-            <div
-              className={`absolute inset-0 z-20 rounded-[28px] p-6 flex flex-col items-center justify-center text-center transition-colors duration-300 border shadow-sm overflow-hidden ${
-                fullScreenOverlay.isRedPhase
-                  ? 'bg-[#111111] text-white border-[#FF3B30]/30'
-                  : 'bg-[#F7F7F7] text-[#111111] border-[#EEEEEE]'
-              }`}
-            >
-              {/* Subtle Ambient Radial Glow */}
-              <div
-                className={`absolute inset-0 pointer-events-none transition-opacity duration-300 ${
-                  fullScreenOverlay.isRedPhase
-                    ? 'opacity-40 bg-[radial-gradient(circle_at_center,rgba(255,59,48,0.25)_0%,transparent_70%)]'
-                    : 'opacity-30 bg-[radial-gradient(circle_at_center,rgba(52,199,89,0.25)_0%,transparent_70%)]'
-                }`}
-              />
-
-              <div className="relative z-10 w-full max-w-sm flex flex-col items-center text-center">
-                {/* Status Pill Badge */}
-                <div
-                  className={`mb-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 shadow-2xs ${
-                    fullScreenOverlay.isRedPhase
-                      ? 'bg-[#FF3B30] text-white animate-pulse'
-                      : 'bg-white text-[#111111] border border-[#E5E5E7]'
-                  }`}
-                >
-                  {fullScreenOverlay.isRedPhase ? (
-                    <>
-                      <AlertTriangle size={13} className="shrink-0" />
-                      <span>NON-ARABLE URBAN RESTRICTION</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-[#34C759] animate-ping shrink-0" />
-                      <span>
-                        SATELLITE LOCK • {fullScreenOverlay.lat.toFixed(4)}°N,{' '}
-                        {fullScreenOverlay.lng.toFixed(4)}°E
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                {/* Headline */}
-                <h2
-                  className={`text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 transition-colors duration-300 ${
-                    fullScreenOverlay.isRedPhase ? 'text-[#FF3B30]' : 'text-[#111111]'
-                  }`}
-                  style={{
-                    fontFamily:
-                      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", -apple-system, sans-serif',
-                    letterSpacing: '-0.04em',
-                  }}
-                >
-                  {fullScreenOverlay.isRedPhase
-                    ? 'Non-Arable Terrain Detected'
-                    : 'Analyzing Satellite Grid'}
-                </h2>
-
-                {/* Subheadline description */}
-                <p
-                  className={`text-xs sm:text-sm mb-6 max-w-xs transition-colors duration-300 leading-relaxed ${
-                    fullScreenOverlay.isRedPhase ? 'text-white/80' : 'text-[#666666]'
-                  }`}
-                >
-                  {fullScreenOverlay.isRedPhase
-                    ? 'Coordinates correspond to urban infrastructure or non-farmable land. Telemetry export blocked.'
-                    : 'Querying Sentinel-2 multispectral surface bands & NASA POWER 2m atmospheric grid...'}
-                </p>
-
-                {/* Central ThoughtLine Container Card */}
-                <div
-                  className={`w-full rounded-[22px] p-5 shadow-xs transition-all duration-300 border ${
-                    fullScreenOverlay.isRedPhase
-                      ? 'bg-[#1C1C1E] border-[#FF3B30]/40'
-                      : 'bg-white border-[#E5E5E7]'
-                  }`}
-                >
-                  <div className="flex justify-center w-full">
-                    <ThoughtLine
-                      working={!fullScreenOverlay.isRedPhase}
-                      steps={
-                        fullScreenOverlay.isRedPhase
-                          ? [
-                              'Resolving GPS coordinates & GIS boundary',
-                              'Sampling Sentinel-2 multispectral surface bands',
-                              'Urban infrastructure / developed parcel detected',
-                              'Agricultural zoning restriction enforced',
-                            ]
-                          : analysisSteps
-                      }
-                      label={
-                        fullScreenOverlay.isRedPhase
-                          ? 'Restricted: Non-arable land'
-                          : 'Analyzing UAE GPS parcel…'
-                      }
-                      doneLabel={
-                        fullScreenOverlay.isRedPhase
-                          ? 'Restricted: Non-arable'
-                          : 'Telemetry verified in'
-                      }
-                      glyph={fullScreenOverlay.isRedPhase ? 'dot' : 'sparkle'}
-                      fontSize={14}
-                      color={fullScreenOverlay.isRedPhase ? '#FF3B30' : '#111111'}
-                      glyphColor={fullScreenOverlay.isRedPhase ? '#FF3B30' : '#34C759'}
-                      collapsible={false}
-                      collapseOnSettle={false}
-                      showTimer={true}
-                    />
-                  </div>
-                </div>
-              </div>
+        <div className="lg:col-span-5 h-full overflow-y-auto space-y-4 pr-1">
+          {/* ThoughtLine GPS Parcel Analysis Component */}
+          <div className="bg-[#F5F5F7] rounded-3xl p-5 border border-[rgba(0,0,0,0.04)] shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold tracking-wider text-[#86868B] uppercase">
+                Satellite Intelligence
+              </span>
+              <span className="text-xs font-mono text-[#86868B] bg-white px-2.5 py-1 rounded-full shadow-2xs">
+                {selected.lat.toFixed(4)}°N, {selected.lng.toFixed(4)}°E
+              </span>
             </div>
-          )}
+            <div className="bg-white rounded-2xl p-4 border border-[rgba(0,0,0,0.04)] shadow-xs">
+              <ThoughtLine
+                working={isAnalyzing}
+                steps={analysisSteps}
+                label="Analyzing GPS parcel & satellite data…"
+                doneLabel="Analyzed in"
+                glyph="sparkle"
+                fontSize={14}
+                color="#111111"
+                glyphColor="#34C759"
+                collapsible
+                collapseOnSettle={false}
+                showTimer
+              />
+            </div>
+          </div>
 
-          {/* Telemetry & Analysis Scroll Content */}
-          <div
-            className={`h-full overflow-y-auto space-y-4 pr-1 transition-opacity duration-200 ${
-              fullScreenOverlay.visible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          >
-            {/* Location Header Card */}
-            <div className="swiss-card p-6 space-y-3">
+          {/* Location Header Card */}
+          <div className="swiss-card p-6 space-y-3">
             <div className="flex items-center justify-between">
               <span className="badge-emerald">
                 {selected.emirate}
@@ -688,7 +451,6 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
                 </div>
               </div>
             )}
-          </div>
 
             {/* Slide to Export to CSV Panel */}
             <div className="bg-white rounded-3xl p-5 border border-[rgba(0,0,0,0.06)] shadow-xs flex flex-col items-center justify-center gap-3">
