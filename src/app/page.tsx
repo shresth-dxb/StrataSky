@@ -541,12 +541,6 @@ export default function StrataSkyMobbinApp() {
         className="flex-1"
       >
         <div className="max-w-5xl mx-auto flex flex-col items-center justify-center">
-          {/* NASA Space Apps 2026 • Dubai Pill Badge */}
-          <div className="mb-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#F5F5F7] text-xs font-semibold text-[#111111] tracking-normal select-none shadow-2xs border border-[#EEEEEE]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#34C759]" />
-            <span>NASA Space Apps 2026 • Dubai</span>
-          </div>
-
           {/* 1. TYPOGRAPHY: SF PRO & 2. THE MASSIVE HERO HEADLINE */}
           <h1
             style={{
