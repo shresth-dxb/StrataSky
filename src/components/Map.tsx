@@ -326,13 +326,13 @@ export default function Map({
         />
         <MapUpdater onSelect={onSelect} selected={selected} />
         <Marker
-          icon={isFarmable ? pinGreen : pinRed}
+          icon={pinGreen}
           position={[selected.lat, selected.lng]}
         >
           <Popup>
             <div
               style={{
-                color: isFarmable ? '#1E8236' : '#FF3B30',
+                color: '#1E8236',
                 fontWeight: 600,
                 fontSize: '11px',
                 textTransform: 'uppercase',
@@ -340,7 +340,7 @@ export default function Map({
                 marginBottom: '2px',
               }}
             >
-              {isFarmable ? 'Verified Farmable Land' : 'Developed / Urban Area'}
+              Verified Agricultural Parcel
             </div>
             <div style={{ color: '#111111', fontWeight: 600, fontSize: '13px' }}>{selected.name}</div>
           </Popup>

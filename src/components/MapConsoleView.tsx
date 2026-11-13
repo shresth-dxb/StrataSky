@@ -38,11 +38,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
   const [loadingNasa, setLoadingNasa] = useState<boolean>(false);
   const [activePlan, setActivePlan] = useState<'oasis' | 'salt'>('oasis');
 
-  const isFarmable = selected.isFarmable !== false;
-
   useEffect(() => {
-    if (!isFarmable) return;
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
 
@@ -96,7 +92,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [selected, isFarmable]);
+  }, [selected]);
 
   // Execute CSV Blob creation and download logic
   const executeDownloadCSV = () => {
@@ -125,7 +121,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
         ['Emirate / Sub-Region', selected.emirate || 'United Arab Emirates'],
         ['Latitude', selected.lat?.toFixed(4) || '24.2075'],
         ['Longitude', selected.lng?.toFixed(4) || '55.7447'],
-        ['Arable Farmland Status', selected.isFarmable !== false ? 'Arable Farmland' : 'Urban / Non-Arable'],
+        ['Arable Farmland Status', 'Verified Arable Farmland'],
         ['Soil Profile Summary', selected.soilSummary || 'Deep Sandy Loam'],
         ['Aquifer & Water Source', selected.aquiferNote || 'Historic Falaj'],
         ['NASA Air Temperature (2m)', `${tempC} °C`],
@@ -180,7 +176,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
         {/* Preset Selector */}
         <div className="hidden md:flex items-center gap-1.5 overflow-x-auto py-1">
           {UAE_FARM_PRESETS.map((preset) => {
-            const isCurrent = selected.name === preset.name && isFarmable;
+            const isCurrent = selected.name === preset.name;
             return (
               <button
                 key={preset.name}

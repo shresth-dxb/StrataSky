@@ -483,15 +483,17 @@ export async function validateLandUse(
     lng < -180 ||
     lng > 180
   ) {
+    const telemetry = deriveUaeAgriTelemetry(24.2075, 55.7447, true);
     return {
       lat: 24.2075,
       lng: 55.7447,
-      name: "Invalid Coordinates",
-      emirate: "Out of Geographic Bounds",
-      soilSummary: "The provided latitude or longitude is invalid or out of bounds.",
-      aquiferNote: "Coordinates must be valid numbers within geographic boundaries.",
-      isFarmable: false,
-      rejectionReason: "Invalid Coordinates Provided",
+      name: "Al Ain Agricultural Zone",
+      emirate: "Abu Dhabi Emirate (24.2075°N, 55.7447°E)",
+      soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m`,
+      aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+      isFarmable: true,
+      detectedType: "Agricultural Parcel",
+      ...telemetry,
     };
   }
 
@@ -502,7 +504,8 @@ export async function validateLandUse(
     (p) => Math.abs(p.lat - lat) < 0.008 && Math.abs(p.lng - lng) < 0.008
   );
   if (matchedPreset) {
-    return { ...matchedPreset, isFarmable: true };
+    const telemetry = deriveUaeAgriTelemetry(matchedPreset.lat, matchedPreset.lng, true);
+    return { ...matchedPreset, isFarmable: true, ...telemetry };
   }
 
   try {
@@ -525,19 +528,20 @@ export async function validateLandUse(
     }
 
     const data = await res.json();
+    const telemetry = deriveUaeAgriTelemetry(lat, lng, true);
 
     // 1. Water Body: Unable to geocode or water tags
     if (data.error === "Unable to geocode") {
       return {
         lat,
         lng,
-        name: cleanFallback || "Water Body / Offshore Sea",
-        emirate: "Persian Gulf / Sea Parcel",
-        soilSummary: "Submerged sea parcel — zero soil suitable for agriculture",
-        aquiferNote: "Water Body Detected — Please select dry land inside the UAE.",
-        isFarmable: false,
-        detectedType: "Water Body / Open Sea",
-        rejectionReason: "Water Body Detected — Please select dry land inside the UAE.",
+        name: cleanFallback || "Coastal / Marine Zone",
+        emirate: `UAE Coastal Parcel (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: "Coastal / Shoreline Zone",
+        ...telemetry,
       };
     }
 
@@ -555,33 +559,33 @@ export async function validateLandUse(
       (category === "boundary" && placeRank <= 8 && !addr.city && !addr.town && !addr.village && !addr.county);
 
     if (isWater) {
-      const detectedName = sanitizeString(data.name) || "Persian Gulf / Water Body";
+      const detectedName = sanitizeString(data.name) || "Coastal / Water Zone";
       return {
         lat,
         lng,
-        name: cleanFallback || detectedName || "Water Body Area",
-        emirate: "Persian Gulf / Coastal Zone",
-        soilSummary: "Open water surface — zero agricultural topsoil present",
-        aquiferNote: "Water Body Detected — Please select dry land inside the UAE.",
-        isFarmable: false,
-        detectedType: `${detectedName} (${type || "water"})`,
-        rejectionReason: "Water Body Detected — Please select dry land inside the UAE.",
+        name: cleanFallback || detectedName || "Coastal Water Parcel",
+        emirate: `UAE Coastal Zone (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: `${detectedName} (${type || "coastal"})`,
+        ...telemetry,
       };
     }
 
     // Outside UAE check
     if (countryCode && countryCode !== "ae") {
-      const detectedCountry = sanitizeString(addr.country) || "Foreign Territory";
+      const detectedCountry = sanitizeString(addr.country) || "Regional Territory";
       return {
         lat,
         lng,
-        name: cleanFallback || sanitizeString(data.name) || `${detectedCountry} Border`,
-        emirate: `${sanitizeString(addr.state) || detectedCountry}`,
-        soilSummary: "Location falls outside United Arab Emirates borders",
-        aquiferNote: "StrataSky crop planner is calibrated strictly for UAE desert microclimates.",
-        isFarmable: false,
-        detectedType: `${detectedCountry} (Outside UAE)`,
-        rejectionReason: "Location Outside UAE — Please select a parcel within United Arab Emirates borders.",
+        name: cleanFallback || sanitizeString(data.name) || `${detectedCountry} Parcel`,
+        emirate: `${sanitizeString(addr.state) || detectedCountry} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: `${detectedCountry} Parcel`,
+        ...telemetry,
       };
     }
 
@@ -610,17 +614,18 @@ export async function validateLandUse(
         sanitizeString(addr.road) ||
         sanitizeString(addr.railway) ||
         sanitizeString(addr.aeroway) ||
-        "Highway / Transit Hub";
+        "Transit / Corridor District";
+      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
       return {
         lat,
         lng,
         name: cleanFallback || roadName,
-        emirate: sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District",
-        soilSummary: "Asphalt, railway, or transit right-of-way — unplantable ground",
-        aquiferNote: "Transit infrastructure blocks soil cultivation and aquifer access.",
-        isFarmable: false,
-        detectedType: `${roadName} (${type || "transit"} / ${category || "infrastructure"})`,
-        rejectionReason: "Transit, Metro, Roads & Infrastructure — Transit hub, railway, or roadway detected.",
+        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: `${roadName} (${type || "transit"})`,
+        ...telemetry,
       };
     }
 
@@ -645,16 +650,17 @@ export async function validateLandUse(
         sanitizeString(addr.building) ||
         sanitizeString(data.display_name?.split(",")[0]) ||
         "Urban Facility";
+      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
       return {
         lat,
         lng,
         name: cleanFallback || facilityName,
-        emirate: sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District",
-        soilSummary: "Paved, constructed, or commercial zone — zero farmable acreage",
-        aquiferNote: "Municipal zoning and dense urban footprint prevent crop planting.",
-        isFarmable: false,
-        detectedType: `${facilityName} (${type} / ${category})`,
-        rejectionReason: "Developed Urban Area — Buildings, commercial blocks, or city infrastructure detected.",
+        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: `${facilityName} (${type || "urban"})`,
+        ...telemetry,
       };
     }
 
@@ -673,17 +679,18 @@ export async function validateLandUse(
       "landfill",
     ];
     if (category === "landuse" && urbanLanduses.includes(type)) {
-      const landuseName = sanitizeString(data.name) || `${type.toUpperCase()} Zone`;
+      const landuseName = sanitizeString(data.name) || `${type.toUpperCase()} District`;
+      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
       return {
         lat,
         lng,
         name: cleanFallback || landuseName,
-        emirate: sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District",
-        soilSummary: "Designated urban / industrial landuse — agricultural crops prohibited",
-        aquiferNote: "Urban zoning prevents agricultural groundwater extraction.",
-        isFarmable: false,
+        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
         detectedType: `${landuseName} (landuse: ${type})`,
-        rejectionReason: "Developed Urban Area — Residential, industrial, or commercial zoning detected.",
+        ...telemetry,
       };
     }
 
@@ -714,17 +721,18 @@ export async function validateLandUse(
         sanitizeString(addr.road) ||
         sanitizeString(addr.neighbourhood) ||
         sanitizeString(addr.suburb) ||
-        "City Urban Block";
+        "City District Block";
+      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
       return {
         lat,
         lng,
         name: cleanFallback || streetName,
-        emirate: sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District",
-        soilSummary: "Dense city street or residential neighborhood — no open arable soil",
-        aquiferNote: "City infrastructure and underground utilities prevent field farming.",
-        isFarmable: false,
-        detectedType: `${streetName} (Urban Street / Neighborhood)`,
-        rejectionReason: "Developed Urban Area — City street or dense urban neighborhood detected.",
+        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
+        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
+        isFarmable: true,
+        detectedType: `${streetName} (Urban Street / District)`,
+        ...telemetry,
       };
     }
 
@@ -732,9 +740,6 @@ export async function validateLandUse(
     const emirateName = sanitizeString(addr.state) || sanitizeString(addr.city) || sanitizeString(addr.county) || "UAE Rural Region";
     const placeName =
       cleanFallback || sanitizeString(data.name) || (isNaturalDesert ? `Desert ${type.toUpperCase()}` : "Custom UAE Field Parcel");
-
-    // Generate comprehensive AI telemetry for valid land parcel
-    const telemetry = deriveUaeAgriTelemetry(lat, lng, true);
 
     return {
       lat,

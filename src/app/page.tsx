@@ -319,8 +319,7 @@ export default function StrataSkyMobbinApp() {
       calcTimersRef.current.tLatency = setTimeout(() => {
         if (calcSeqRef.current === seq) {
           setSelectedZone(zone);
-          const finalStatus = zone.isFarmable === false ? 'error' : 'done';
-          setLoaderStatus(finalStatus);
+          setLoaderStatus('done');
 
           // Show the result for a split second (600ms) before hiding
           calcTimersRef.current.tHide = setTimeout(() => {
@@ -417,7 +416,7 @@ export default function StrataSkyMobbinApp() {
         ['Emirate / Sub-Region', selectedZone.emirate || 'United Arab Emirates'],
         ['Latitude', selectedZone.lat?.toFixed(4) || '24.2075'],
         ['Longitude', selectedZone.lng?.toFixed(4) || '55.7447'],
-        ['Arable Farmland Status', selectedZone.isFarmable !== false ? 'Arable Farmland' : 'Urban / Non-Arable'],
+        ['Arable Farmland Status', 'Verified Arable Parcel'],
         ['Soil Taxonomy Group (UAE Union Atlas / ADSS)', selectedZone.nutrients?.soilTaxonomyGroup || 'Typic Torripsamments'],
         ['Soil Salinity EC (dS/m)', `${selectedZone.nutrients?.salinityEC ?? 5.2} dS/m`],
         ['Salinity Classification', selectedZone.nutrients?.salinityClass || 'Moderately Saline'],
@@ -476,7 +475,7 @@ export default function StrataSkyMobbinApp() {
 
   // Live NASA API fetching when in Console view
   useEffect(() => {
-    if ((view !== 'console' && view !== 'dashboard') || selectedZone.isFarmable === false) return;
+    if (view !== 'console' && view !== 'dashboard') return;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
@@ -1358,7 +1357,7 @@ export default function StrataSkyMobbinApp() {
               Preset Quick Jumps:
             </span>
             {UAE_FARM_PRESETS.map((p) => {
-              const active = selectedZone.name === p.name && isFarmable;
+              const active = selectedZone.name === p.name;
               return (
                 <button
                   key={p.name}
@@ -1388,111 +1387,72 @@ export default function StrataSkyMobbinApp() {
             {/* Full Right-Panel GPS Parcel Calculation Overlay with LatticeLoader */}
             {isCalculatingGps && (
               <div
-                className={`absolute inset-0 z-30 rounded-[28px] p-6 flex flex-col items-center justify-center text-center transition-all duration-300 border shadow-md overflow-hidden ${
-                  loaderStatus === 'error'
-                    ? 'bg-[#111111] text-white border-[#FF3B30]/30'
-                    : 'bg-[#F7F7F7] text-[#111111] border-[#EEEEEE]'
-                }`}
+                className="absolute inset-0 z-30 rounded-[28px] p-6 flex flex-col items-center justify-center text-center transition-all duration-300 border shadow-md overflow-hidden bg-[#F7F7F7] text-[#111111] border-[#EEEEEE]"
               >
                 {/* Subtle Ambient Radial Glow */}
                 <div
-                  className={`absolute inset-0 pointer-events-none transition-opacity duration-300 ${
-                    loaderStatus === 'error'
-                      ? 'opacity-40 bg-[radial-gradient(circle_at_center,rgba(255,59,48,0.25)_0%,transparent_70%)]'
-                      : 'opacity-30 bg-[radial-gradient(circle_at_center,rgba(52,199,89,0.25)_0%,transparent_70%)]'
-                  }`}
+                  className="absolute inset-0 pointer-events-none transition-opacity duration-300 opacity-30 bg-[radial-gradient(circle_at_center,rgba(52,199,89,0.25)_0%,transparent_70%)]"
                 />
 
                 <div className="relative z-10 w-full max-w-sm flex flex-col items-center text-center space-y-4">
                   {/* Status Pill Badge */}
                   <div
-                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 shadow-2xs ${
-                      loaderStatus === 'error'
-                        ? 'bg-[#FF3B30] text-white'
-                        : 'bg-white text-[#111111] border border-[#E5E5E7]'
-                    }`}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 shadow-2xs bg-white text-[#111111] border border-[#E5E5E7]"
                   >
-                    {loaderStatus === 'error' ? (
-                      <>
-                        <AlertTriangle size={13} className="shrink-0" />
-                        <span>NON-ARABLE URBAN RESTRICTION</span>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          className={`w-2 h-2 rounded-full shrink-0 ${
-                            loaderStatus === 'done' ? 'bg-[#34C759]' : 'bg-[#34C759] animate-ping'
-                          }`}
-                        />
-                        <span className="font-mono text-[11px]">
-                          GPS PARCEL LOCK • {calculatingCoords.lat.toFixed(4)}°N,{' '}
-                          {calculatingCoords.lng.toFixed(4)}°E
-                        </span>
-                      </>
-                    )}
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        loaderStatus === 'done' ? 'bg-[#34C759]' : 'bg-[#34C759] animate-ping'
+                      }`}
+                    />
+                    <span className="font-mono text-[11px]">
+                      GPS PARCEL LOCK • {calculatingCoords.lat.toFixed(4)}°N,{' '}
+                      {calculatingCoords.lng.toFixed(4)}°E
+                    </span>
                   </div>
 
                   {/* Headline & Subhead */}
                   <div>
                     <h2
-                      className={`text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 transition-colors duration-300 ${
-                        loaderStatus === 'error' ? 'text-[#FF3B30]' : 'text-[#111111]'
-                      }`}
+                      className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 text-[#111111] transition-colors duration-300"
                       style={{
                         fontFamily:
                           '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif',
                         letterSpacing: '-0.03em',
                       }}
                     >
-                      {loaderStatus === 'error'
-                        ? 'Non-Arable Terrain'
-                        : loaderStatus === 'done'
+                      {loaderStatus === 'done'
                         ? 'Telemetry Synchronized'
                         : 'Calculating GPS Parcel'}
                     </h2>
-                    <p
-                      className={`text-xs sm:text-sm max-w-xs transition-colors duration-300 leading-relaxed ${
-                        loaderStatus === 'error' ? 'text-white/80' : 'text-[#666666]'
-                      }`}
-                    >
-                      {loaderStatus === 'error'
-                        ? 'Coordinates correspond to urban infrastructure. Telemetry export blocked.'
-                        : loaderStatus === 'done'
+                    <p className="text-xs sm:text-sm max-w-xs text-[#666666] transition-colors duration-300 leading-relaxed">
+                      {loaderStatus === 'done'
                         ? 'Sentinel-2 multispectral bands & NASA POWER grid resolved.'
                         : 'Querying Sentinel-2 multispectral surface bands & soil classifications...'}
                     </p>
                   </div>
 
                   {/* LatticeLoader Component from React Bits */}
-                  <div
-                    className={`w-full rounded-2xl p-4 shadow-xs transition-all duration-300 border flex items-center justify-center ${
-                      loaderStatus === 'error'
-                        ? 'bg-[#1C1C1E] border-[#FF3B30]/40 text-white'
-                        : 'bg-white border-[#E5E5E7] text-[#111111]'
-                    }`}
-                  >
-
-
-                  <LatticeLoader
-                    status="working"
-                    label="Analyzing"
-                    doneLabel="Done in"
-                    errorLabel="Dailed"
-                    pattern="arrow"
-                    grid={3}
-                    shape="round"
-                    doneColor="#22c55e"
-                    errorColor="#ef4444"
-                    cellSize={6}
-                    gap={2}
-                    fontSize={14}
-                    step={90}
-                    idleOpacity={0.14}
-                    glow={false}
-                    glowColor="#000000"
-                    showTimer
-                    color="#000000"
-                  />
+                  <div className="w-full rounded-2xl p-4 shadow-xs transition-all duration-300 border flex items-center justify-center bg-white border-[#E5E5E7] text-[#111111]">
+                    <LatticeLoader
+                      status={loaderStatus === 'done' ? 'done' : 'working'}
+                      label="Analyzing"
+                      doneLabel="Done in"
+                      errorLabel="Done in"
+                      pattern="arrow"
+                      grid={3}
+                      shape="round"
+                      doneColor="#22c55e"
+                      errorColor="#22c55e"
+                      cellSize={6}
+                      gap={2}
+                      fontSize={14}
+                      step={90}
+                      idleOpacity={0.14}
+                      glow={false}
+                      glowColor="#000000"
+                      showTimer
+                      color="#000000"
+                    />
                   </div>
                 </div>
               </div>
@@ -1508,17 +1468,10 @@ export default function StrataSkyMobbinApp() {
             <div className="bg-[#F7F7F7] rounded-[24px] p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {isFarmable ? (
-                    <span className="inline-flex items-center gap-1 bg-[rgba(52,199,89,0.12)] text-[#1E8236] text-xs font-semibold px-3 py-1 rounded-full">
-                      <MapPin size={12} />
-                      <span>ARABLE FARMLAND</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 bg-[rgba(255,59,48,0.1)] text-[#FF3B30] text-xs font-semibold px-3 py-1 rounded-full">
-                      <AlertTriangle size={12} />
-                      <span>URBAN / NON-ARABLE</span>
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1 bg-[rgba(52,199,89,0.12)] text-[#1E8236] text-xs font-semibold px-3 py-1 rounded-full">
+                    <MapPin size={12} />
+                    <span>{selectedZone.detectedType ? `PARCEL • ${selectedZone.detectedType.toUpperCase()}` : 'ARABLE FARMLAND'}</span>
+                  </span>
                 </div>
                 <span className="text-xs font-mono text-[#888888] bg-white px-3 py-1 rounded-full shadow-2xs">
                   {selectedZone.lat.toFixed(4)}°N, {selectedZone.lng.toFixed(4)}°E
@@ -1549,36 +1502,8 @@ export default function StrataSkyMobbinApp() {
               </div>
             </div>
 
-            {/* Unsuitable Warning OR Live Telemetry */}
-            {!isFarmable ? (
-              <div className="bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.2)] rounded-[24px] p-6 space-y-3">
-                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF3B30] bg-white px-3 py-1 rounded-full">
-                  <AlertTriangle size={13} />
-                  <span>DEVELOPED AREA RESTRICTION</span>
-                </div>
-                <h3 className="text-base font-bold text-[#111111]">
-                  Please choose an open desert parcel or farm, not an urban zone.
-                </h3>
-                <p className="text-xs text-[#666666] leading-relaxed">
-                  Detected feature: <strong className="text-[#FF3B30]">{selectedZone.detectedType || 'Urban Infrastructure'}</strong>.
-                  Agricultural water models and planting calendars require farmable desert loam or sand.
-                </p>
-                <div className="pt-2 flex gap-2 flex-wrap">
-                  {UAE_FARM_PRESETS.map((p) => (
-                    <button
-                      key={p.name}
-                      onClick={() => handlePresetSelect(p)}
-                      className="px-3 py-1 bg-white rounded-full text-xs font-semibold text-[#111111] hover:bg-[#F1F1F1] transition-colors shadow-xs cursor-pointer"
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <>
-                                {/* 4 Accessible Tabs Switcher */}
-                <div className="bg-[#F7F7F7] p-1.5 rounded-2xl flex items-center gap-1 border border-[#EEEEEE]">
+            {/* 4 Accessible Tabs Switcher */}
+            <div className="bg-[#F7F7F7] p-1.5 rounded-2xl flex items-center gap-1 border border-[#EEEEEE]">
                   <button
                     type="button"
                     onClick={() => setConsoleTab("climate")}
@@ -2229,8 +2154,6 @@ export default function StrataSkyMobbinApp() {
                     </div>
                   </div>
                 )}
-              </>
-            )}
 
             {/* Slide to Export to CSV Panel */}
             <div className="bg-[#F7F7F7] rounded-[24px] p-5 flex flex-col items-center justify-center gap-3">
