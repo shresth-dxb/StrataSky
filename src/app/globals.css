@@ -85,6 +85,90 @@ html, body {
   color: #111111;
 }
 
+/* Ink Swap Button Animation (fx-20) */
+.btn {
+  /* Theme tokens — override these to recolour the button */
+  --primary: #F4FF2B;
+  --secondary: #0F191E;
+  --surface: #E2F1F2;
+  --bink: var(--secondary);   /* ink / foreground */
+  --bsurf: var(--surface);    /* surface / background */
+  position: relative;
+  isolation: isolate;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 13px 24px;
+  border: 1px solid var(--bink);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bink);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-label {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  transition: inherit;
+}
+
+/* Shared sliding panel used by many fill effects */
+.btn::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: var(--bink);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.4s ease;
+}
+
+.fx-20::before {
+  display: none;
+}
+
+.fx-20:is(:hover, :focus-visible, [data-preview]) {
+  background: var(--bink);
+  color: var(--bsurf);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--bink);
+  outline-offset: 5px;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn:disabled::before,
+.btn:disabled::after {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn *,
+  .btn::before,
+  .btn::after,
+  .btn *::before,
+  .btn *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* LEAFLET LIGHT THEMED MAP STYLING */
 .leaflet-container {
   width: 100%;

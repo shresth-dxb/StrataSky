@@ -609,26 +609,12 @@ export default function StrataSkyMobbinApp() {
             </button>
 
             <button
+              type="button"
+              className="btn fx-20"
+              aria-label="How it Works"
               onClick={() => handleOpenConsole()}
-              style={{
-                height: '56px',
-                padding: '0 34px',
-                borderRadius: '9999px',
-                backgroundColor: 'transparent',
-                color: '#111111',
-                fontSize: '16px',
-                fontWeight: 600,
-                letterSpacing: '-0.01em',
-                border: '1px solid #111111',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-              }}
-              className="hover:bg-[#F5F5F7] active:scale-95"
             >
-              <span>How it Works</span>
+              <span className="btn-label">How it Works</span>
             </button>
           </div>
         </div>
