@@ -23,7 +23,6 @@ import {
 import { UaeFarmZone, UAE_FARM_PRESETS } from '@/lib/landValidation';
 import AppIcon from '@/components/AppIcon';
 import SlideCommit from '@/components/SlideCommit';
-import ThoughtLine from '@/components/ThoughtLine';
 export { AppIcon };
 
 // Dynamic Map for Map Console view
@@ -260,63 +259,6 @@ export default function StrataSkyMobbinApp() {
   const [nasaTemp, setNasaTemp] = useState<number>(27.2);
   const [nasaSolar, setNasaSolar] = useState<number>(19.4);
   const [loadingNasa, setLoadingNasa] = useState<boolean>(false);
-  const [analyzingHold, setAnalyzingHold] = useState<boolean>(false);
-
-  // Parcel Analysis State
-  const isAnalyzing =
-    selectedZone.name.includes('Analyzing') || loadingNasa || analyzingHold;
-
-  // Analysis Steps progression
-  const [analysisSteps, setAnalysisSteps] = useState<string[]>([
-    'Resolving GPS coordinates & emirate boundary',
-  ]);
-
-  useEffect(() => {
-    if (selectedZone.name.includes('Analyzing') || loadingNasa) {
-      setAnalyzingHold(true);
-      const timer = setTimeout(() => {
-        setAnalyzingHold(false);
-      }, 1900);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedZone.name, loadingNasa]);
-
-  useEffect(() => {
-    if (isAnalyzing) {
-      setAnalysisSteps(['Resolving GPS coordinates & emirate boundary']);
-      const t1 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Sampling Sentinel-2 multispectral surface bands',
-        ]);
-      }, 400);
-      const t2 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Querying NASA POWER daily solar & 2m thermal grid',
-        ]);
-      }, 850);
-      const t3 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Analyzing soil salinity & historical falaj aquifers',
-        ]);
-      }, 1300);
-      const t4 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Computing 3-year oasis & halophyte yield projections',
-        ]);
-      }, 1750);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-        clearTimeout(t4);
-      };
-    }
-  }, [isAnalyzing]);
 
   // Toggle Bookmark
   const toggleBookmark = (id: string, e: React.MouseEvent) => {
@@ -349,10 +291,6 @@ export default function StrataSkyMobbinApp() {
 
   // Execute CSV Blob creation and download logic
   const executeDownloadCSV = () => {
-    if (selectedZone.isFarmable === false) {
-      console.warn('Cannot export CSV: Selected location is urban or non-arable.');
-      return;
-    }
     try {
       const planName =
         activePlan === 'oasis' ? 'Plan 1: Oasis Canopy' : 'Plan 2: Halophyte Harvest';
@@ -378,7 +316,7 @@ export default function StrataSkyMobbinApp() {
         ['Emirate / Sub-Region', selectedZone.emirate || 'United Arab Emirates'],
         ['Latitude', selectedZone.lat?.toFixed(4) || '24.2075'],
         ['Longitude', selectedZone.lng?.toFixed(4) || '55.7447'],
-        ['Arable Farmland Status', 'Arable Farmland'],
+        ['Arable Farmland Status', selectedZone.isFarmable !== false ? 'Arable Farmland' : 'Urban / Non-Arable'],
         ['Soil Profile Summary', selectedZone.soilSummary || 'Deep Sandy Loam'],
         ['Aquifer & Water Source', selectedZone.aquiferNote || 'Historic Falaj'],
         ['NASA Air Temperature (2m)', `${nasaTemp} °C`],
@@ -1329,46 +1267,11 @@ export default function StrataSkyMobbinApp() {
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 p-6 overflow-hidden">
           {/* Left Column: Interactive Leaflet Map with Floating Search Bar */}
           <div className="lg:col-span-7 h-full min-h-[460px] rounded-[32px] overflow-hidden border border-[#EEEEEE] shadow-xs relative bg-[#F7F7F7]">
-            {isAnalyzing && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-black/8 flex items-center gap-2.5 pointer-events-none">
-                <span className="w-2 h-2 rounded-full bg-[#0A84FF] animate-ping" />
-                <span className="text-xs font-semibold text-[#111111]">
-                  Analyzing GPS Parcel ({selectedZone.lat.toFixed(4)}°N, {selectedZone.lng.toFixed(4)}°E)...
-                </span>
-              </div>
-            )}
             <DynamicMap onSelect={setSelectedZone} selected={selectedZone} />
           </div>
 
           {/* Right Column: Structured Telemetry & Crop Rotations Scroll */}
           <div className="lg:col-span-5 h-full overflow-y-auto space-y-4 pr-1 console-scroll">
-            {/* ThoughtLine GPS Parcel Analysis Component */}
-            <div className="bg-[#F7F7F7] rounded-[24px] p-5 border border-[#EEEEEE] shadow-2xs space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold tracking-wider text-[#888888] uppercase">
-                  Satellite Intelligence
-                </span>
-                <span className="text-xs font-mono text-[#888888] bg-white px-2.5 py-1 rounded-full shadow-2xs">
-                  {selectedZone.lat.toFixed(4)}°N, {selectedZone.lng.toFixed(4)}°E
-                </span>
-              </div>
-              <div className="bg-white rounded-2xl p-4 border border-[rgba(0,0,0,0.04)] shadow-xs">
-                <ThoughtLine
-                  working={isAnalyzing}
-                  steps={analysisSteps}
-                  label="Analyzing GPS parcel & satellite data…"
-                  doneLabel="Analyzed in"
-                  glyph="sparkle"
-                  fontSize={14}
-                  color="#111111"
-                  glyphColor="#34C759"
-                  collapsible
-                  collapseOnSettle={false}
-                  showTimer
-                />
-              </div>
-            </div>
-
             {/* Selected Location Header Card */}
             <div className="bg-[#F7F7F7] rounded-[24px] p-6 space-y-4">
               <div className="flex items-center justify-between">
@@ -1586,33 +1489,17 @@ export default function StrataSkyMobbinApp() {
               </div>
               <div className="w-full flex justify-center py-1">
                 <SlideCommit
-                  label={
-                    !isFarmable
-                      ? "Non-Arable Land (Export Blocked)"
-                      : "Slide to export to CSV"
-                  }
+                  label="Slide to export to CSV"
                   doneLabel="Exported"
-                  errorLabel="Export Failed: Non-Arable"
-                  onConfirm={() =>
-                    new Promise((resolve, reject) => {
-                      setTimeout(() => {
-                        if (!isFarmable) {
-                          reject(
-                            new Error('Cannot export CSV: Selected land is urban or non-arable.')
-                          );
-                        } else {
-                          resolve(true);
-                        }
-                      }, 400);
-                    })
-                  }
+                  errorLabel="Export Failed"
+                  onConfirm={() => new Promise((resolve) => setTimeout(resolve, 400))}
                   onDone={() => {
                     setTimeout(() => {
                       executeDownloadCSV();
                     }, 200);
                   }}
                   trackColor="#F1F1F1"
-                  handleColor={isFarmable ? "#111111" : "#888888"}
+                  handleColor="#111111"
                   successColor="#34C759"
                   dangerColor="#FF3B30"
                   width={300}

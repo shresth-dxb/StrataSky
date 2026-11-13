@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { UaeFarmZone, UAE_FARM_PRESETS } from '@/lib/landValidation';
 import SlideCommit from '@/components/SlideCommit';
-import ThoughtLine from '@/components/ThoughtLine';
 
 const DynamicMap = dynamic(() => import('@/components/Map'), {
   ssr: false,
@@ -37,66 +36,9 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
   const [tempC, setTempC] = useState<number>(27.2);
   const [solarVal, setSolarVal] = useState<number>(19.4);
   const [loadingNasa, setLoadingNasa] = useState<boolean>(false);
-  const [analyzingHold, setAnalyzingHold] = useState<boolean>(false);
   const [activePlan, setActivePlan] = useState<'oasis' | 'salt'>('oasis');
 
   const isFarmable = selected.isFarmable !== false;
-
-  // Parcel Analysis State
-  const isAnalyzing =
-    selected.name.includes('Analyzing') || loadingNasa || analyzingHold;
-
-  // Analysis Steps progression
-  const [analysisSteps, setAnalysisSteps] = useState<string[]>([
-    'Resolving GPS coordinates & emirate boundary',
-  ]);
-
-  useEffect(() => {
-    if (selected.name.includes('Analyzing') || loadingNasa) {
-      setAnalyzingHold(true);
-      const timer = setTimeout(() => {
-        setAnalyzingHold(false);
-      }, 1900);
-      return () => clearTimeout(timer);
-    }
-  }, [selected.name, loadingNasa]);
-
-  useEffect(() => {
-    if (isAnalyzing) {
-      setAnalysisSteps(['Resolving GPS coordinates & emirate boundary']);
-      const t1 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Sampling Sentinel-2 multispectral surface bands',
-        ]);
-      }, 400);
-      const t2 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Querying NASA POWER daily solar & 2m thermal grid',
-        ]);
-      }, 850);
-      const t3 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Analyzing soil salinity & historical falaj aquifers',
-        ]);
-      }, 1300);
-      const t4 = setTimeout(() => {
-        setAnalysisSteps((prev) => [
-          ...prev,
-          'Computing 3-year oasis & halophyte yield projections',
-        ]);
-      }, 1750);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
-        clearTimeout(t4);
-      };
-    }
-  }, [isAnalyzing]);
 
   useEffect(() => {
     if (!isFarmable) return;
@@ -158,10 +100,6 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
 
   // Execute CSV Blob creation and download logic
   const executeDownloadCSV = () => {
-    if (selected.isFarmable === false) {
-      console.warn('Cannot export CSV: Selected location is urban or non-arable.');
-      return;
-    }
     try {
       const planName =
         activePlan === 'oasis' ? 'Plan 1: Oasis Shade Method' : 'Plan 2: Salt-Water Harvest';
@@ -187,7 +125,7 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
         ['Emirate / Sub-Region', selected.emirate || 'United Arab Emirates'],
         ['Latitude', selected.lat?.toFixed(4) || '24.2075'],
         ['Longitude', selected.lng?.toFixed(4) || '55.7447'],
-        ['Arable Farmland Status', 'Arable Farmland'],
+        ['Arable Farmland Status', selected.isFarmable !== false ? 'Arable Farmland' : 'Urban / Non-Arable'],
         ['Soil Profile Summary', selected.soilSummary || 'Deep Sandy Loam'],
         ['Aquifer & Water Source', selected.aquiferNote || 'Historic Falaj'],
         ['NASA Air Temperature (2m)', `${tempC} °C`],
@@ -264,46 +202,11 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 p-5 overflow-hidden">
         {/* Map Container */}
         <div className="lg:col-span-7 h-full rounded-3xl overflow-hidden border border-[rgba(0,0,0,0.06)] shadow-[0_8px_24px_rgba(0,0,0,0.04)] relative bg-[#F2F2F7]">
-          {isAnalyzing && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-black/8 flex items-center gap-2.5 pointer-events-none">
-              <span className="w-2 h-2 rounded-full bg-[#0A84FF] animate-ping" />
-              <span className="text-xs font-semibold text-[#111111]">
-                Analyzing GPS Parcel ({selected.lat.toFixed(4)}°N, {selected.lng.toFixed(4)}°E)...
-              </span>
-            </div>
-          )}
           <DynamicMap onSelect={setSelected} selected={selected} />
         </div>
 
         {/* Telemetry & Analysis Panel */}
         <div className="lg:col-span-5 h-full overflow-y-auto space-y-4 pr-1">
-          {/* ThoughtLine GPS Parcel Analysis Component */}
-          <div className="bg-[#F5F5F7] rounded-3xl p-5 border border-[rgba(0,0,0,0.04)] shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold tracking-wider text-[#86868B] uppercase">
-                Satellite Intelligence
-              </span>
-              <span className="text-xs font-mono text-[#86868B] bg-white px-2.5 py-1 rounded-full shadow-2xs">
-                {selected.lat.toFixed(4)}°N, {selected.lng.toFixed(4)}°E
-              </span>
-            </div>
-            <div className="bg-white rounded-2xl p-4 border border-[rgba(0,0,0,0.04)] shadow-xs">
-              <ThoughtLine
-                working={isAnalyzing}
-                steps={analysisSteps}
-                label="Analyzing GPS parcel & satellite data…"
-                doneLabel="Analyzed in"
-                glyph="sparkle"
-                fontSize={14}
-                color="#111111"
-                glyphColor="#34C759"
-                collapsible
-                collapseOnSettle={false}
-                showTimer
-              />
-            </div>
-          </div>
-
           {/* Location Header Card */}
           <div className="swiss-card p-6 space-y-3">
             <div className="flex items-center justify-between">
@@ -464,33 +367,17 @@ export default function MapConsoleView({ onBack }: MapConsoleViewProps) {
               </div>
               <div className="w-full flex justify-center py-1">
                 <SlideCommit
-                  label={
-                    !isFarmable
-                      ? "Non-Arable Land (Export Blocked)"
-                      : "Slide to export to CSV"
-                  }
+                  label="Slide to export to CSV"
                   doneLabel="Exported"
-                  errorLabel="Export Failed: Non-Arable"
-                  onConfirm={() =>
-                    new Promise((resolve, reject) => {
-                      setTimeout(() => {
-                        if (!isFarmable) {
-                          reject(
-                            new Error('Cannot export CSV: Selected land is urban or non-arable.')
-                          );
-                        } else {
-                          resolve(true);
-                        }
-                      }, 400);
-                    })
-                  }
+                  errorLabel="Export Failed"
+                  onConfirm={() => new Promise((resolve) => setTimeout(resolve, 400))}
                   onDone={() => {
                     setTimeout(() => {
                       executeDownloadCSV();
                     }, 200);
                   }}
                   trackColor="#F1F1F1"
-                  handleColor={isFarmable ? "#111111" : "#888888"}
+                  handleColor="#111111"
                   successColor="#34C759"
                   dangerColor="#FF3B30"
                   width={300}
