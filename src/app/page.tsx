@@ -19,8 +19,26 @@ import {
   AlertTriangle,
   Wifi,
   Battery,
+  CloudRain,
+  Sprout,
+  Target,
+  ShieldCheck,
+  CheckCircle2,
+  Info,
+  ChevronRight,
+  TrendingUp,
+  Layers,
+  Wind,
+  FlaskConical,
 } from 'lucide-react';
-import { UaeFarmZone, UAE_FARM_PRESETS } from '@/lib/landValidation';
+import {
+  UaeFarmZone,
+  UAE_FARM_PRESETS,
+  SoilNutrientProfile,
+  ClimateRainfallProfile,
+  CropRotationStrategy,
+  FarmerPriorityScores,
+} from '@/lib/landValidation';
 import AppIcon from '@/components/AppIcon';
 import SlideCommit from '@/components/SlideCommit';
 import LatticeLoader from '@/components/LatticeLoader';
@@ -257,6 +275,9 @@ export default function StrataSkyMobbinApp() {
   // Map Console Active Parcel
   const [selectedZone, setSelectedZone] = useState<UaeFarmZone>(UAE_FARM_PRESETS[0]);
   const [activePlan, setActivePlan] = useState<'oasis' | 'salt'>('oasis');
+  const [consoleTab, setConsoleTab] = useState<'climate' | 'nutrients' | 'strategies' | 'priorities'>('climate');
+  const [selectedStrategyId, setSelectedStrategyId] = useState<'baseline' | 'oasis' | 'saline'>('oasis');
+  const [farmerGoal, setFarmerGoal] = useState<'saveWater' | 'maximizeProfit' | 'rebuildSoil' | 'lowerRisk' | 'useLessFertilizer'>('saveWater');
   const [nasaTemp, setNasaTemp] = useState<number>(27.2);
   const [nasaSolar, setNasaSolar] = useState<number>(19.4);
   const [loadingNasa, setLoadingNasa] = useState<boolean>(false);
@@ -385,22 +406,9 @@ export default function StrataSkyMobbinApp() {
   // Execute CSV Blob creation and download logic
   const executeDownloadCSV = () => {
     try {
-      const planName =
-        activePlan === 'oasis' ? 'Plan 1: Oasis Canopy' : 'Plan 2: Halophyte Harvest';
-      const planWater = activePlan === 'oasis' ? '8,500 m³/ha' : '3,800 m³/ha';
-      const planSavings = activePlan === 'oasis' ? '60%' : '82%';
-      const year1 =
-        activePlan === 'oasis'
-          ? 'Date Palms - Build shade tier'
-          : 'Desert Quinoa - Grows in brackish well';
-      const year2 =
-        activePlan === 'oasis'
-          ? 'Citrus & Figs - Plant understory'
-          : 'Salicornia Crop - Extracts topsoil salt';
-      const year3 =
-        activePlan === 'oasis'
-          ? 'Closed Canopy - Cuts water by 60%'
-          : 'Soil Restored - Ready for vegetables';
+      const activeStrategy =
+        selectedZone.strategies?.find((s) => s.id === selectedStrategyId) ||
+        selectedZone.strategies?.[1];
 
       const rows = [
         ['Field', 'Value'],
@@ -410,17 +418,43 @@ export default function StrataSkyMobbinApp() {
         ['Latitude', selectedZone.lat?.toFixed(4) || '24.2075'],
         ['Longitude', selectedZone.lng?.toFixed(4) || '55.7447'],
         ['Arable Farmland Status', selectedZone.isFarmable !== false ? 'Arable Farmland' : 'Urban / Non-Arable'],
-        ['Soil Profile Summary', selectedZone.soilSummary || 'Deep Sandy Loam'],
-        ['Aquifer & Water Source', selectedZone.aquiferNote || 'Historic Falaj'],
+        ['Soil Taxonomy Group (UAE Union Atlas / ADSS)', selectedZone.nutrients?.soilTaxonomyGroup || 'Typic Torripsamments'],
+        ['Soil Salinity EC (dS/m)', `${selectedZone.nutrients?.salinityEC ?? 5.2} dS/m`],
+        ['Salinity Classification', selectedZone.nutrients?.salinityClass || 'Moderately Saline'],
+        ['Soil pH', `${selectedZone.nutrients?.ph ?? 8.0}`],
+        ['Soil Organic Carbon (SOC %)', `${selectedZone.nutrients?.soilOrganicCarbon ?? 0.35} %`],
+        ['Soil Organic Matter (%)', `${selectedZone.nutrients?.organicMatter ?? 0.6} %`],
+        ['Atmospheric CO2 Concentration', `${selectedZone.nutrients?.co2AtmosphericPpm ?? 421.4} ppm`],
+        ['Carbon Sequestration Potential', `${selectedZone.nutrients?.carbonSequestrationPotential ?? 2.3} t CO2/ha/yr`],
+        // Macronutrients
+        ['Nitrogen (N)', `${selectedZone.nutrients?.nitrogen.value ?? 16} mg/kg (${selectedZone.nutrients?.nitrogen.rating ?? 'Low'})`],
+        ['Phosphorus (P)', `${selectedZone.nutrients?.phosphorus.value ?? 14} mg/kg (${selectedZone.nutrients?.phosphorus.rating ?? 'Low'})`],
+        ['Potassium (K)', `${selectedZone.nutrients?.potassium.value ?? 210} mg/kg (${selectedZone.nutrients?.potassium.rating ?? 'Optimal'})`],
+        // Secondary Nutrients
+        ['Calcium (Ca)', `${selectedZone.nutrients?.calcium.value ?? 4600} mg/kg (${selectedZone.nutrients?.calcium.rating ?? 'High'})`],
+        ['Magnesium (Mg)', `${selectedZone.nutrients?.magnesium.value ?? 430} mg/kg (${selectedZone.nutrients?.magnesium.rating ?? 'Optimal'})`],
+        ['Sulfur (S)', `${selectedZone.nutrients?.sulfur.value ?? 85} mg/kg (${selectedZone.nutrients?.sulfur.rating ?? 'Optimal'})`],
+        // Micronutrients
+        ['Iron (Fe)', `${selectedZone.nutrients?.iron.value ?? 2.6} mg/kg (${selectedZone.nutrients?.iron.rating ?? 'Low'})`],
+        ['Zinc (Zn)', `${selectedZone.nutrients?.zinc.value ?? 0.65} mg/kg (${selectedZone.nutrients?.zinc.rating ?? 'Deficient'})`],
+        ['Boron (B)', `${selectedZone.nutrients?.boron.value ?? 1.3} mg/kg (${selectedZone.nutrients?.boron.rating ?? 'Safe'})`],
+        // Climate & Rain
+        ['Annual Rainfall (NCM / UAE.Stat)', `${selectedZone.climate?.annualRainfallMm ?? 92} mm/year`],
+        ['Wet Season Months', selectedZone.climate?.wetSeasonMonths || 'December – March'],
+        ['Drought Risk Index', selectedZone.climate?.droughtRiskIndex || 'Severe'],
+        ['SMAP Soil Moisture (Volumetric %)', `${selectedZone.climate?.smapSoilMoisturePercent ?? 8.5} %`],
+        ['ECOSTRESS Evapotranspiration (ET0)', `${selectedZone.climate?.evapotranspirationMmYear ?? 2200} mm/year`],
         ['NASA Air Temperature (2m)', `${nasaTemp} °C`],
         ['NASA Solar Irradiance (All-Sky)', `${nasaSolar} MJ`],
-        ['Recommended Crop Plan', planName],
-        ['Target Annual Water Usage', planWater],
-        ['Estimated Water Saved', planSavings],
-        ['Baseline Benchmark (Rhodes Grass)', '22,000 m³/ha'],
-        ['Crop Rotation Year 01', year1],
-        ['Crop Rotation Year 02', year2],
-        ['Crop Rotation Year 03', year3],
+        // Recommended Strategy
+        ['Selected Rotation Strategy', activeStrategy?.name || '3-Tier Oasis Agroforestry Canopy'],
+        ['Annual Water Consumption', `${activeStrategy?.waterUsageM3Ha ?? 8500} m³/ha`],
+        ['Water Saved vs Rhodes Grass Baseline', `${activeStrategy?.waterSavingsPercent ?? 61} %`],
+        ['Projected Net Profit (AED/ha)', `${activeStrategy?.profitPerHaAed ?? 34800} AED/ha`],
+        ['Soil Health Gain', activeStrategy?.soilHealthGain || '+0.9% SOC / 3yr'],
+        ['Chemical Fertilizer Reduction', `${activeStrategy?.fertilizerReductionPercent ?? 65} %`],
+        ['ICBA Research Evidence', activeStrategy?.icbaEvidence || 'Documented in ICBA Annual Reports (2018-2023)'],
+        ['Top Farmer Priority Setting', farmerGoal],
       ];
 
       const escapeCell = (val: string) => `"${(val ?? '').toString().replace(/"/g, '""')}"`;
@@ -430,7 +464,7 @@ export default function StrataSkyMobbinApp() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'stratasky-export.csv');
+      link.setAttribute('download', 'stratasky-telemetry-export.csv');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1437,25 +1471,28 @@ export default function StrataSkyMobbinApp() {
                         : 'bg-white border-[#E5E5E7] text-[#111111]'
                     }`}
                   >
-                    <LatticeLoader
-                      status={loaderStatus}
-                      label="Analyzing"
-                      doneLabel="Done in"
-                      errorLabel="Failed after"
-                      pattern="arrow"
-                      grid={3}
-                      shape="round"
-                      doneColor="#22c55e"
-                      errorColor="#ef4444"
-                      cellSize={6}
-                      gap={2}
-                      fontSize={14}
-                      step={90}
-                      idleOpacity={0.14}
-                      glow
-                      glowColor={loaderStatus === 'error' ? '#FF3B30' : '#000000'}
-                      showTimer
-                    />
+
+
+                  <LatticeLoader
+                    status="working"
+                    label="Analyzing"
+                    doneLabel="Done in"
+                    errorLabel="Dailed"
+                    pattern="arrow"
+                    grid={3}
+                    shape="round"
+                    doneColor="#22c55e"
+                    errorColor="#ef4444"
+                    cellSize={6}
+                    gap={2}
+                    fontSize={14}
+                    step={90}
+                    idleOpacity={0.14}
+                    glow={false}
+                    glowColor="#000000"
+                    showTimer
+                    color="#000000"
+                  />
                   </div>
                 </div>
               </div>
@@ -1540,135 +1577,658 @@ export default function StrataSkyMobbinApp() {
               </div>
             ) : (
               <>
-                {/* NASA Climate Telemetry Widgets */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-[#F7F7F7] rounded-[24px] p-5 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-semibold text-[#888888]">
-                      <span>AIR TEMPERATURE</span>
-                      <Thermometer size={16} className="text-[#34C759]" />
-                    </div>
-                    <div className="text-2xl font-bold text-[#111111] my-2">
-                      {loadingNasa ? '...' : `${nasaTemp}°C`}
-                    </div>
-                    <span className="text-[11px] text-[#888888]">
-                      NASA Langley POWER API 2m Grid
-                    </span>
-                  </div>
+                                {/* 4 Accessible Tabs Switcher */}
+                <div className="bg-[#F7F7F7] p-1.5 rounded-2xl flex items-center gap-1 border border-[#EEEEEE]">
+                  <button
+                    type="button"
+                    onClick={() => setConsoleTab("climate")}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      consoleTab === "climate"
+                        ? "bg-white text-[#111111] shadow-xs"
+                        : "text-[#888888] hover:text-[#111111]"
+                    }`}
+                  >
+                    <Sun size={13} className={consoleTab === "climate" ? "text-[#FF9500]" : ""} />
+                    <span>Climate & Rain</span>
+                  </button>
 
-                  <div className="bg-[#F7F7F7] rounded-[24px] p-5 flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-semibold text-[#888888]">
-                      <span>SOLAR IRRADIANCE</span>
-                      <Sun size={16} className="text-[#FF9500]" />
-                    </div>
-                    <div className="text-2xl font-bold text-[#111111] my-2">
-                      {loadingNasa ? '...' : `${nasaSolar} MJ`}
-                    </div>
-                    <span className="text-[11px] text-[#888888]">
-                      Daily All-Sky Downward Flux
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConsoleTab("nutrients")}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      consoleTab === "nutrients"
+                        ? "bg-white text-[#111111] shadow-xs"
+                        : "text-[#888888] hover:text-[#111111]"
+                    }`}
+                  >
+                    <FlaskConical size={13} className={consoleTab === "nutrients" ? "text-[#34C759]" : ""} />
+                    <span>Soil Nutrients</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConsoleTab("strategies")}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      consoleTab === "strategies"
+                        ? "bg-white text-[#111111] shadow-xs"
+                        : "text-[#888888] hover:text-[#111111]"
+                    }`}
+                  >
+                    <Sprout size={13} className={consoleTab === "strategies" ? "text-[#1E8236]" : ""} />
+                    <span>3-Yr Rotations</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConsoleTab("priorities")}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      consoleTab === "priorities"
+                        ? "bg-white text-[#111111] shadow-xs"
+                        : "text-[#888888] hover:text-[#111111]"
+                    }`}
+                  >
+                    <Target size={13} className={consoleTab === "priorities" ? "text-[#0A84FF]" : ""} />
+                    <span>Priorities</span>
+                  </button>
                 </div>
 
-                {/* Crop Plan Segmented Switcher */}
-                <div className="bg-[#F7F7F7] rounded-[24px] p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#111111] uppercase tracking-wider">
-                      RECOMMENDED 3-YEAR PROTOCOL
-                    </span>
-                    <div className="inline-flex bg-white p-1 rounded-full text-xs font-semibold shadow-xs">
-                      <button
-                        onClick={() => setActivePlan('oasis')}
-                        className={`px-3.5 py-1.5 rounded-full transition-all cursor-pointer ${
-                          activePlan === 'oasis'
-                            ? 'bg-[#111111] text-white'
-                            : 'text-[#888888] hover:text-[#111111]'
-                        }`}
-                      >
-                        Oasis Shade
-                      </button>
-                      <button
-                        onClick={() => setActivePlan('salt')}
-                        className={`px-3.5 py-1.5 rounded-full transition-all cursor-pointer ${
-                          activePlan === 'salt'
-                            ? 'bg-[#111111] text-white'
-                            : 'text-[#888888] hover:text-[#111111]'
-                        }`}
-                      >
-                        Salt Harvest
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Water Savings Comparison Bar */}
-                  <div className="bg-white p-4 rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-2">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span className="text-[#111111]">
-                        {activePlan === 'oasis' ? 'Plan 1: Oasis Canopy' : 'Plan 2: Halophyte Harvest'}
-                      </span>
-                      <span className="text-[#1E8236]">
-                        {activePlan === 'oasis' ? '8,500 m³/ha (Saves 60%)' : '3,800 m³/ha (Saves 82%)'}
-                      </span>
-                    </div>
-                    <div className="w-full h-2.5 bg-[#EEEEEE] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#34C759] rounded-full transition-all duration-500"
-                        style={{ width: activePlan === 'oasis' ? '38%' : '18%' }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[11px] text-[#888888]">
-                      <span>Standard Rhodes Grass: 22,000 m³/ha (High Depletion)</span>
-                    </div>
-                  </div>
-
-                  {/* 3-Year Steps Timeline */}
-                  {activePlan === 'oasis' ? (
-                    <div className="space-y-2.5">
-                      <p className="text-xs text-[#666666] leading-relaxed">
-                        Date palms create an upper microclimate canopy blocking intense solar heat. Beneath the palms, citrus trees and nitrogen-fixing legumes flourish without synthetic chemical fertilizers.
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 01</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Date Palms</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Build shade tier</div>
+                {/* TAB 1: CLIMATE & RAINFALL */}
+                {consoleTab === "climate" && (
+                  <div className="space-y-4">
+                    {/* NASA POWER Live Telemetry */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-[#F7F7F7] rounded-[24px] p-5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-xs font-semibold text-[#888888]">
+                          <span>AIR TEMPERATURE</span>
+                          <Thermometer size={16} className="text-[#34C759]" />
                         </div>
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 02</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Citrus &amp; Figs</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Plant understory</div>
+                        <div className="text-2xl font-bold text-[#111111] my-2">
+                          {loadingNasa ? "..." : `${nasaTemp}°C`}
                         </div>
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 03</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Closed Canopy</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Cuts water by 60%</div>
+                        <span className="text-[11px] text-[#888888]">NASA Langley POWER 2m Grid</span>
+                      </div>
+
+                      <div className="bg-[#F7F7F7] rounded-[24px] p-5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between text-xs font-semibold text-[#888888]">
+                          <span>SOLAR IRRADIANCE</span>
+                          <Sun size={16} className="text-[#FF9500]" />
+                        </div>
+                        <div className="text-2xl font-bold text-[#111111] my-2">
+                          {loadingNasa ? "..." : `${nasaSolar} MJ`}
+                        </div>
+                        <span className="text-[11px] text-[#888888]">Daily All-Sky Downward Flux</span>
+                      </div>
+                    </div>
+
+                    {/* NCM / UAE.Stat Monthly Rainfall Distribution Chart */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CloudRain size={16} className="text-[#0A84FF]" />
+                          <span className="text-xs font-bold text-[#111111] uppercase tracking-wider">
+                            Rainfall Patterns (NCM Weather Normal)
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-[#0A84FF] bg-white px-2.5 py-1 rounded-full shadow-2xs">
+                          {selectedZone.climate?.annualRainfallMm ?? 92} mm / yr
+                        </span>
+                      </div>
+
+                      <div className="bg-white p-4 rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-3">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[#888888]">
+                            Wet Season: <strong className="text-[#111111]">{selectedZone.climate?.wetSeasonMonths || "Dec – Mar"}</strong>
+                          </span>
+                          <span className="text-[#888888]">
+                            Drought Index: <strong className="text-[#FF3B30]">{selectedZone.climate?.droughtRiskIndex || "Severe"}</strong>
+                          </span>
+                        </div>
+
+                        {/* Interactive 12-Month SVG Column Chart */}
+                        <div className="h-28 w-full flex items-end justify-between gap-1.5 pt-3 px-1">
+                          {(selectedZone.climate?.monthlyRainfallMm || [18, 24, 14, 7, 2, 0.2, 0.1, 0.4, 0.3, 3, 9, 19]).map((mm, idx) => {
+                            const maxRain = 28;
+                            const heightPercent = Math.max(8, Math.min(100, (mm / maxRain) * 100));
+                            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            return (
+                              <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative">
+                                <span className="absolute -top-7 text-[10px] font-mono font-bold bg-[#111111] text-white px-1.5 py-0.5 rounded shadow opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-20">
+                                  {months[idx]}: {mm} mm
+                                </span>
+                                <div className="w-full bg-[#F1F1F1] rounded-t-sm flex items-end h-18">
+                                  <div
+                                    className={`w-full rounded-t-sm transition-all duration-300 ${
+                                      mm > 12 ? "bg-[#0A84FF]" : mm > 3 ? "bg-[#34C759]" : "bg-[#D1D1D6]"
+                                    }`}
+                                    style={{ height: `${heightPercent}%` }}
+                                  />
+                                </div>
+                                <span className="text-[9px] font-mono text-[#888888]">{months[idx][0]}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-between text-[11px] text-[#888888] pt-1 border-t border-gray-100">
+                          <span>Winter Cloud Seeding Window (Dec–Feb)</span>
+                          <span className="text-[#FF3B30]">Summer Aridity (0 mm / 48°C)</span>
                         </div>
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      <p className="text-xs text-[#666666] leading-relaxed">
-                        When agricultural well water turns brackish, standard vegetables fail. This rotation uses Quinoa and Salicornia to draw mineral salts out of the topsoil, steadily rehabilitating the parcel.
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 01</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Desert Quinoa</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Grows in brackish well</div>
+
+                    {/* NASA Satellite Observations: SMAP + ECOSTRESS + CO2 */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-3">
+                      <span className="text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center gap-1.5">
+                        <Wind size={15} className="text-[#34C759]" />
+                        <span>NASA Earth Observations & Carbon Grid</span>
+                      </span>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white p-3.5 rounded-2xl border border-[rgba(0,0,0,0.04)] flex flex-col gap-1">
+                          <span className="text-[11px] text-[#888888] font-semibold uppercase">SMAP Soil Moisture</span>
+                          <span className="text-lg font-bold text-[#111111]">
+                            {selectedZone.climate?.smapSoilMoisturePercent ?? 8.5}% <span className="text-xs font-normal text-[#888888]">volumetric</span>
+                          </span>
+                          <span className="text-[10px] text-[#888888]">Surface 0–5cm passive radiometer</span>
                         </div>
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 02</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Salicornia Crop</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Extracts topsoil salt</div>
+
+                        <div className="bg-white p-3.5 rounded-2xl border border-[rgba(0,0,0,0.04)] flex flex-col gap-1">
+                          <span className="text-[11px] text-[#888888] font-semibold uppercase">ECOSTRESS ET₀</span>
+                          <span className="text-lg font-bold text-[#111111]">
+                            {selectedZone.climate?.evapotranspirationMmYear ?? 2200} <span className="text-xs font-normal text-[#888888]">mm/yr</span>
+                          </span>
+                          <span className="text-[10px] text-[#888888]">High atmospheric evaporative deficit</span>
                         </div>
-                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
-                          <div className="text-[10px] text-[#1E8236] font-bold">YEAR 03</div>
-                          <div className="text-xs font-bold text-[#111111] mt-0.5">Soil Restored</div>
-                          <div className="text-[10px] text-[#888888] mt-0.5">Ready for vegetables</div>
+
+                        <div className="bg-white p-3.5 rounded-2xl border border-[rgba(0,0,0,0.04)] flex flex-col gap-1">
+                          <span className="text-[11px] text-[#888888] font-semibold uppercase">CO₂ Concentration</span>
+                          <span className="text-lg font-bold text-[#111111]">
+                            {selectedZone.nutrients?.co2AtmosphericPpm ?? 421.4} <span className="text-xs font-normal text-[#888888]">ppm</span>
+                          </span>
+                          <span className="text-[10px] text-[#888888]">Global background monitoring</span>
+                        </div>
+
+                        <div className="bg-white p-3.5 rounded-2xl border border-[rgba(0,0,0,0.04)] flex flex-col gap-1">
+                          <span className="text-[11px] text-[#888888] font-semibold uppercase">Carbon Sink Potential</span>
+                          <span className="text-lg font-bold text-[#34C759]">
+                            +{selectedZone.nutrients?.carbonSequestrationPotential ?? 2.4} <span className="text-xs font-normal text-[#888888]">t CO₂/ha/yr</span>
+                          </span>
+                          <span className="text-[10px] text-[#888888]">With multi-tier agroforestry/halophyte</span>
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* TAB 2: SOIL NUTRIENTS & CHEMISTRY */}
+                {consoleTab === "nutrients" && (
+                  <div className="space-y-4">
+                    {/* Primary Macronutrients N-P-K */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center gap-1.5">
+                          <FlaskConical size={15} className="text-[#34C759]" />
+                          <span>Macronutrients (MOCCAE / Soil Lab Standards)</span>
+                        </span>
+                        <span className="text-xs font-mono text-[#888888] bg-white px-2 py-0.5 rounded-full">
+                          mg / kg
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="bg-white p-3 rounded-2xl border border-[rgba(0,0,0,0.04)] text-center flex flex-col justify-between">
+                          <span className="text-[10px] font-bold text-[#888888]">NITROGEN (N)</span>
+                          <div className="text-xl font-bold text-[#111111] my-1">
+                            {selectedZone.nutrients?.nitrogen.value ?? 16}
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              selectedZone.nutrients?.nitrogen.rating === "Deficient"
+                                ? "bg-[#FF3B30]/10 text-[#FF3B30]"
+                                : selectedZone.nutrients?.nitrogen.rating === "Low"
+                                ? "bg-[#FF9500]/10 text-[#FF9500]"
+                                : "bg-[#34C759]/10 text-[#1E8236]"
+                            }`}
+                          >
+                            {selectedZone.nutrients?.nitrogen.rating ?? "Low"}
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-2xl border border-[rgba(0,0,0,0.04)] text-center flex flex-col justify-between">
+                          <span className="text-[10px] font-bold text-[#888888]">PHOSPHORUS (P)</span>
+                          <div className="text-xl font-bold text-[#111111] my-1">
+                            {selectedZone.nutrients?.phosphorus.value ?? 14}
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              selectedZone.nutrients?.phosphorus.rating === "Deficient"
+                                ? "bg-[#FF3B30]/10 text-[#FF3B30]"
+                                : selectedZone.nutrients?.phosphorus.rating === "Low"
+                                ? "bg-[#FF9500]/10 text-[#FF9500]"
+                                : "bg-[#34C759]/10 text-[#1E8236]"
+                            }`}
+                          >
+                            {selectedZone.nutrients?.phosphorus.rating ?? "Low"}
+                          </span>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-2xl border border-[rgba(0,0,0,0.04)] text-center flex flex-col justify-between">
+                          <span className="text-[10px] font-bold text-[#888888]">POTASSIUM (K)</span>
+                          <div className="text-xl font-bold text-[#111111] my-1">
+                            {selectedZone.nutrients?.potassium.value ?? 210}
+                          </div>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              selectedZone.nutrients?.potassium.rating === "Optimal"
+                                ? "bg-[#34C759]/10 text-[#1E8236]"
+                                : "bg-[#FF9500]/10 text-[#FF9500]"
+                            }`}
+                          >
+                            {selectedZone.nutrients?.potassium.rating ?? "Optimal"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] text-xs text-[#666666] leading-relaxed">
+                        <strong className="text-[#111111]">Target Guidance:</strong> {selectedZone.nutrients?.nitrogen.target} High calcium carbonate (CaCO₃ &gt; 20%) binds soluble phosphorus; companion legumes or biochar compost release active plant uptake.
+                      </div>
+                    </div>
+
+                    {/* Secondary & Micronutrients Table */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-3">
+                      <span className="text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers size={15} className="text-[#0A84FF]" />
+                        <span>Secondary &amp; Micronutrients Profile</span>
+                      </span>
+
+                      <div className="bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] overflow-hidden text-xs">
+                        <table className="w-full text-left">
+                          <thead className="bg-[#F9F9FB] border-b border-gray-100 text-[10px] font-bold text-[#888888] uppercase">
+                            <tr>
+                              <th className="py-2 px-3.5">Element</th>
+                              <th className="py-2 px-3">Level (mg/kg)</th>
+                              <th className="py-2 px-3">Rating</th>
+                              <th className="py-2 px-3">Agronomic Implication</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Calcium (Ca)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.calcium.value ?? 4600}</td>
+                              <td className="py-2 px-3 text-[#FF9500] font-semibold">{selectedZone.nutrients?.calcium.rating ?? "High"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.calcium.notes}</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Magnesium (Mg)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.magnesium.value ?? 430}</td>
+                              <td className="py-2 px-3 text-[#1E8236] font-semibold">{selectedZone.nutrients?.magnesium.rating ?? "Optimal"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.magnesium.notes}</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Sulfur (S)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.sulfur.value ?? 85}</td>
+                              <td className="py-2 px-3 text-[#1E8236] font-semibold">{selectedZone.nutrients?.sulfur.rating ?? "Optimal"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.sulfur.notes}</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Iron (Fe)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.iron.value ?? 2.6}</td>
+                              <td className="py-2 px-3 text-[#FF3B30] font-semibold">{selectedZone.nutrients?.iron.rating ?? "Low"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.iron.notes}</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Zinc (Zn)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.zinc.value ?? 0.65}</td>
+                              <td className="py-2 px-3 text-[#FF3B30] font-semibold">{selectedZone.nutrients?.zinc.rating ?? "Deficient"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.zinc.notes}</td>
+                            </tr>
+                            <tr>
+                              <td className="py-2 px-3.5 font-bold">Boron (B)</td>
+                              <td className="py-2 px-3 font-mono">{selectedZone.nutrients?.boron.value ?? 1.3}</td>
+                              <td className="py-2 px-3 text-[#1E8236] font-semibold">{selectedZone.nutrients?.boron.rating ?? "Safe"}</td>
+                              <td className="py-2 px-3 text-[#666666]">{selectedZone.nutrients?.boron.notes}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Soil Health, Salinity & Biochar Solution */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-3">
+                      <span className="text-xs font-bold text-[#111111] uppercase tracking-wider">
+                        Soil Physical Properties &amp; ICBA Biochar Advisory
+                      </span>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] text-center">
+                          <span className="text-[10px] text-[#888888] font-bold">SALINITY (EC)</span>
+                          <div className="text-lg font-bold text-[#111111] mt-0.5">
+                            {selectedZone.nutrients?.salinityEC ?? 5.2} <span className="text-[10px] font-normal">dS/m</span>
+                          </div>
+                          <span className="text-[10px] text-[#FF9500] font-semibold">
+                            {selectedZone.nutrients?.salinityClass || "Moderately Saline"}
+                          </span>
+                        </div>
+
+                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] text-center">
+                          <span className="text-[10px] text-[#888888] font-bold">SOIL pH</span>
+                          <div className="text-lg font-bold text-[#111111] mt-0.5">
+                            {selectedZone.nutrients?.ph ?? 7.95}
+                          </div>
+                          <span className="text-[10px] text-[#888888] font-semibold">Alkaline Calcaric</span>
+                        </div>
+
+                        <div className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] text-center">
+                          <span className="text-[10px] text-[#888888] font-bold">ORGANIC CARBON</span>
+                          <div className="text-lg font-bold text-[#111111] mt-0.5">
+                            {selectedZone.nutrients?.soilOrganicCarbon ?? 0.35}%
+                          </div>
+                          <span className="text-[10px] text-[#34C759] font-semibold">
+                            OM: {selectedZone.nutrients?.organicMatter ?? 0.6}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-3.5 bg-white rounded-2xl border border-[#34C759]/20 flex items-start gap-2.5">
+                        <ShieldCheck size={18} className="text-[#34C759] shrink-0 mt-0.5" />
+                        <p className="text-xs text-[#444444] leading-relaxed">
+                          <strong className="text-[#111111]">ICBA Soil Reclamation Protocol:</strong> UAE sandy desert soils (Calcaric Arenosols) experience intense nutrient leaching. Applying <strong>5–10 tonnes/ha biochar</strong> produced from local date palm pruning waste increases soil water-holding capacity by <strong>38%</strong>, balances alkaline pH, and binds zinc and iron into plant-accessible chelates.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: 3-YEAR ROTATION STRATEGIES (COMPARATIVE ANALYSIS) */}
+                {consoleTab === "strategies" && (
+                  <div className="space-y-4">
+                    {/* Strategy Switcher Pills */}
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#111111] uppercase tracking-wider">
+                          Compare 3 Rotation Protocols
+                        </span>
+                        <div className="inline-flex bg-white p-1 rounded-full text-xs font-semibold shadow-xs">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStrategyId("baseline")}
+                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                              selectedStrategyId === "baseline"
+                                ? "bg-[#111111] text-white"
+                                : "text-[#888888] hover:text-[#111111]"
+                            }`}
+                          >
+                            Baseline
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStrategyId("oasis")}
+                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                              selectedStrategyId === "oasis"
+                                ? "bg-[#111111] text-white"
+                                : "text-[#888888] hover:text-[#111111]"
+                            }`}
+                          >
+                            Oasis Canopy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStrategyId("saline")}
+                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                              selectedStrategyId === "saline"
+                                ? "bg-[#111111] text-white"
+                                : "text-[#888888] hover:text-[#111111]"
+                            }`}
+                          >
+                            Biosaline Quinoa
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Active Strategy Card */}
+                      {(() => {
+                        const strat =
+                          selectedZone.strategies?.find((s) => s.id === selectedStrategyId) ||
+                          selectedZone.strategies?.[1] ||
+                          selectedZone.strategies?.[0];
+                        if (!strat) return null;
+
+                        return (
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className="text-base font-bold text-[#111111]">{strat.name}</h3>
+                              <p className="text-xs text-[#666666] mt-0.5">{strat.tagline}</p>
+                            </div>
+
+                            {/* Water Savings Comparison Bar */}
+                            <div className="bg-white p-4 rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-2">
+                              <div className="flex justify-between text-xs font-bold">
+                                <span className="text-[#111111]">
+                                  {strat.waterUsageM3Ha.toLocaleString()} m³/ha Annual Demand
+                                </span>
+                                <span className={strat.waterSavingsPercent > 0 ? "text-[#1E8236]" : "text-[#FF3B30]"}>
+                                  {strat.waterSavingsPercent > 0 ? `Saves ${strat.waterSavingsPercent}% Water` : "Baseline (0% Saved)"}
+                                </span>
+                              </div>
+                              <div className="w-full h-2.5 bg-[#EEEEEE] rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    strat.waterSavingsPercent > 70 ? "bg-[#34C759]" : strat.waterSavingsPercent > 40 ? "bg-[#0A84FF]" : "bg-[#FF3B30]"
+                                  }`}
+                                  style={{ width: `${Math.max(12, (strat.waterUsageM3Ha / 22000) * 100)}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between text-[11px] text-[#888888]">
+                                <span>Projected Margin: <strong className="text-[#111111]">{strat.profitPerHaAed.toLocaleString()} AED / ha</strong></span>
+                                <span>Chemical Fertilizer Cut: <strong className="text-[#1E8236]">-{strat.fertilizerReductionPercent}%</strong></span>
+                              </div>
+                            </div>
+
+                            {/* Rationale & ICBA Research Evidence */}
+                            <div className="bg-white p-4 rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-2.5">
+                              <div className="flex items-start gap-2">
+                                <Info size={16} className="text-[#0A84FF] shrink-0 mt-0.5" />
+                                <div className="text-xs leading-relaxed">
+                                  <strong className="text-[#111111]">Agronomic Rationale:</strong> {strat.whySuggested}
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-2 pt-1 border-t border-gray-100">
+                                <CheckCircle2 size={16} className="text-[#34C759] shrink-0 mt-0.5" />
+                                <div className="text-xs leading-relaxed text-[#444444]">
+                                  <strong className="text-[#111111]">ICBA Published Evidence:</strong> {strat.icbaEvidence}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Benefits & Risk Checklist */}
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div className="p-3.5 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-1.5">
+                                <span className="text-[11px] font-bold text-[#1E8236] uppercase flex items-center gap-1">
+                                  <CheckCircle2 size={13} />
+                                  <span>Core Benefits</span>
+                                </span>
+                                <ul className="text-xs text-[#555555] space-y-1 list-disc list-inside">
+                                  {strat.benefits.map((b, i) => (
+                                    <li key={i} className="leading-snug">{b}</li>
+                                  ))}
+                                </ul>
+                              </div>
+
+                              <div className="p-3.5 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)] space-y-1.5">
+                                <span className="text-[11px] font-bold text-[#FF9500] uppercase flex items-center gap-1">
+                                  <AlertTriangle size={13} />
+                                  <span>Gaps &amp; Local Risks</span>
+                                </span>
+                                <ul className="text-xs text-[#666666] space-y-1 list-disc list-inside">
+                                  {strat.farmerRisks.map((r, i) => (
+                                    <li key={i} className="leading-snug">{r}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+
+                            {/* 3-Year Step Timeline */}
+                            <div className="space-y-2">
+                              <span className="text-[11px] font-bold text-[#888888] uppercase tracking-wider">
+                                3-Year Crop Execution Steps
+                              </span>
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                {strat.timeline.map((step, i) => (
+                                  <div key={i} className="p-3 bg-white rounded-2xl border border-[rgba(0,0,0,0.04)]">
+                                    <div className="text-[10px] text-[#1E8236] font-bold">{step.year}</div>
+                                    <div className="text-xs font-bold text-[#111111] mt-0.5">{step.crop}</div>
+                                    <div className="text-[10px] text-[#888888] mt-0.5 leading-tight">{step.role}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 4: FARMER PRIORITIES */}
+                {consoleTab === "priorities" && (
+                  <div className="space-y-4">
+                    <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-4">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center gap-1.5">
+                            <Target size={15} className="text-[#0A84FF]" />
+                            <span>Farmer Priority Optimization</span>
+                          </span>
+                          <span className="text-[11px] font-semibold text-[#1E8236] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full">
+                            Interactive Goal Matcher
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#666666] mt-1 leading-relaxed">
+                          What matters most to your farming operation? Select a priority below to recalculate the optimal rotation protocol.
+                        </p>
+                      </div>
+
+                      {/* 5 Priority Goal Selectors */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { id: "saveWater", label: "Save Water", icon: Droplets, color: "text-[#0A84FF]" },
+                          { id: "maximizeProfit", label: "Maximize Profit", icon: TrendingUp, color: "text-[#34C759]" },
+                          { id: "rebuildSoil", label: "Rebuild Soil", icon: Sprout, color: "text-[#8E8E93]" },
+                          { id: "lowerRisk", label: "Lower Risk", icon: ShieldCheck, color: "text-[#FF9500]" },
+                          { id: "useLessFertilizer", label: "Less Fertilizer", icon: FlaskConical, color: "text-[#5856D6]" },
+                        ].map((goal) => {
+                          const active = farmerGoal === goal.id;
+                          const IconComp = goal.icon;
+                          return (
+                            <button
+                              key={goal.id}
+                              type="button"
+                              onClick={() => setFarmerGoal(goal.id as any)}
+                              className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                                active
+                                  ? "bg-white border-[#111111] shadow-xs ring-1 ring-[#111111]"
+                                  : "bg-white/70 border-gray-200 hover:bg-white text-[#666666]"
+                              }`}
+                            >
+                              <IconComp size={16} className={active ? goal.color : "text-gray-400"} />
+                              <span className="text-xs font-bold text-[#111111]">{goal.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Top Match Recommendation Box */}
+                      {(() => {
+                        const recStrat =
+                          farmerGoal === "saveWater"
+                            ? selectedZone.strategies?.[2] || selectedZone.strategies?.[1]
+                            : farmerGoal === "maximizeProfit" || farmerGoal === "rebuildSoil"
+                            ? selectedZone.strategies?.[1]
+                            : selectedZone.strategies?.[2] || selectedZone.strategies?.[1];
+
+                        const matchScore =
+                          farmerGoal === "saveWater"
+                            ? 97
+                            : farmerGoal === "maximizeProfit"
+                            ? 95
+                            : farmerGoal === "rebuildSoil"
+                            ? 93
+                            : farmerGoal === "lowerRisk"
+                            ? 96
+                            : 94;
+
+                        return (
+                          <div className="bg-white p-4 rounded-2xl border border-[#34C759]/30 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-[#1E8236] flex items-center gap-1.5 uppercase">
+                                <CheckCircle2 size={15} />
+                                <span>#1 Recommended Strategy for Your Goal</span>
+                              </span>
+                              <span className="text-xs font-mono font-bold text-[#1E8236] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full">
+                                {matchScore}% Match
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-bold text-[#111111]">{recStrat?.name}</h4>
+                              <p className="text-xs text-[#555555] leading-relaxed">
+                                {farmerGoal === "saveWater" &&
+                                  "Consumes only 3,800 m³/ha/yr, achieving an 83% water reduction over conventional practices. Allows irrigation with high-salinity brackish wells or reject brine without exhausting freshwater tables."}
+                                {farmerGoal === "maximizeProfit" &&
+                                  "Delivers projected net profits of 34,800 AED/ha through high-value commercial date varieties (Khalas/Barhi) and companion citrus, while reducing power pumping overhead by 61%."}
+                                {farmerGoal === "rebuildSoil" &&
+                                  "Rebuilds Soil Organic Carbon from 0.3% to over 1.2% within 3 years. Sub-canopy shade and cowpea cover crop fix 120 kg atmospheric Nitrogen/ha directly into sandy desert soil."}
+                                {farmerGoal === "lowerRisk" &&
+                                  "Provides near-total immunity to summer heatwaves (>45°C) and groundwater salinity spikes (>12 dS/m). Halophytic roots thrive where conventional crops burn."}
+                                {farmerGoal === "useLessFertilizer" &&
+                                  "Reduces synthetic chemical fertilizer dependency by 80% through biochar amendments, halophyte mineral recycling, and natural Rhizobium nitrogen fixation."}
+                              </p>
+                            </div>
+
+                            {/* Score Matrix Across 3 Strategies */}
+                            <div className="pt-2 border-t border-gray-100 space-y-2">
+                              <span className="text-[10px] font-bold text-[#888888] uppercase">
+                                Comparative Strategy Score Matrix
+                              </span>
+                              <div className="space-y-1.5">
+                                {[
+                                  {
+                                    name: "Strategy C: Biosaline Quinoa & Salicornia",
+                                    score: farmerGoal === "saveWater" ? 97 : farmerGoal === "lowerRisk" ? 96 : farmerGoal === "useLessFertilizer" ? 94 : 86,
+                                  },
+                                  {
+                                    name: "Strategy B: 3-Tier Oasis Agroforestry",
+                                    score: farmerGoal === "maximizeProfit" ? 95 : farmerGoal === "rebuildSoil" ? 93 : 82,
+                                  },
+                                  {
+                                    name: "Baseline Practice: Rhodes Grass",
+                                    score: farmerGoal === "saveWater" ? 10 : farmerGoal === "maximizeProfit" ? 35 : 18,
+                                  },
+                                ].map((item, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <span className="text-[#666666] truncate pr-2">{item.name}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            item.score > 80 ? "bg-[#34C759]" : item.score > 50 ? "bg-[#FF9500]" : "bg-[#FF3B30]"
+                                          }`}
+                                          style={{ width: `${item.score}%` }}
+                                        />
+                                      </div>
+                                      <span className="font-mono font-bold text-[#111111] w-7 text-right">
+                                        {item.score}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
