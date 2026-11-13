@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import {
@@ -23,6 +23,7 @@ import {
 import { UaeFarmZone, UAE_FARM_PRESETS } from '@/lib/landValidation';
 import AppIcon from '@/components/AppIcon';
 import SlideCommit from '@/components/SlideCommit';
+import LatticeLoader from '@/components/LatticeLoader';
 export { AppIcon };
 
 // Dynamic Map for Map Console view
@@ -260,6 +261,78 @@ export default function StrataSkyMobbinApp() {
   const [nasaSolar, setNasaSolar] = useState<number>(19.4);
   const [loadingNasa, setLoadingNasa] = useState<boolean>(false);
 
+  // GPS Parcel Calculation State (LatticeLoader)
+  const [isCalculatingGps, setIsCalculatingGps] = useState(false);
+  const [loaderStatus, setLoaderStatus] = useState<'working' | 'done' | 'error'>('working');
+  const [calculatingCoords, setCalculatingCoords] = useState<{ lat: number; lng: number }>({
+    lat: UAE_FARM_PRESETS[0].lat,
+    lng: UAE_FARM_PRESETS[0].lng,
+  });
+
+  const calcSeqRef = useRef(0);
+  const calcTimersRef = useRef<{
+    tLatency?: ReturnType<typeof setTimeout>;
+    tHide?: ReturnType<typeof setTimeout>;
+  }>({});
+
+  const clearCalcTimers = () => {
+    if (calcTimersRef.current.tLatency) clearTimeout(calcTimersRef.current.tLatency);
+    if (calcTimersRef.current.tHide) clearTimeout(calcTimersRef.current.tHide);
+  };
+
+  const handleZoneSelect = useCallback((zone: UaeFarmZone) => {
+    const isAnalyzingStart = zone.name.includes('Analyzing');
+
+    if (isAnalyzingStart) {
+      clearCalcTimers();
+      const seq = ++calcSeqRef.current;
+      setCalculatingCoords({ lat: zone.lat, lng: zone.lng });
+      setLoaderStatus('working');
+      setIsCalculatingGps(true);
+      setSelectedZone(zone);
+    } else {
+      const seq = calcSeqRef.current;
+      setCalculatingCoords({ lat: zone.lat, lng: zone.lng });
+      clearCalcTimers();
+      // Additional latency of 1.4 seconds (1400ms)
+      calcTimersRef.current.tLatency = setTimeout(() => {
+        if (calcSeqRef.current === seq) {
+          setSelectedZone(zone);
+          const finalStatus = zone.isFarmable === false ? 'error' : 'done';
+          setLoaderStatus(finalStatus);
+
+          // Show the result for a split second (600ms) before hiding
+          calcTimersRef.current.tHide = setTimeout(() => {
+            if (calcSeqRef.current === seq) {
+              setIsCalculatingGps(false);
+            }
+          }, 600);
+        }
+      }, 1400);
+    }
+  }, []);
+
+  const handlePresetSelect = (preset: UaeFarmZone) => {
+    clearCalcTimers();
+    const seq = ++calcSeqRef.current;
+    setCalculatingCoords({ lat: preset.lat, lng: preset.lng });
+    setLoaderStatus('working');
+    setIsCalculatingGps(true);
+
+    calcTimersRef.current.tLatency = setTimeout(() => {
+      if (calcSeqRef.current === seq) {
+        setSelectedZone({ ...preset, isFarmable: true });
+        setLoaderStatus('done');
+
+        calcTimersRef.current.tHide = setTimeout(() => {
+          if (calcSeqRef.current === seq) {
+            setIsCalculatingGps(false);
+          }
+        }, 600);
+      }
+    }, 1400);
+  };
+
   // Toggle Bookmark
   const toggleBookmark = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -274,7 +347,7 @@ export default function StrataSkyMobbinApp() {
   // Switch to Map Console with Parcel
   const handleOpenConsole = (parcel?: FarmDirectoryParcel) => {
     if (parcel) {
-      setSelectedZone({
+      const zone: UaeFarmZone = {
         name: parcel.name,
         emirate: `${parcel.emirate} • ${parcel.subRegion}`,
         lat: parcel.lat,
@@ -283,10 +356,30 @@ export default function StrataSkyMobbinApp() {
         aquiferNote: parcel.waterSource,
         isFarmable: true,
         zoom: 12,
-      });
+      };
+      setSelectedZone(zone);
       setActivePlan(parcel.cropPlan.includes('Oasis') ? 'oasis' : 'salt');
+      setView('console');
+
+      clearCalcTimers();
+      const seq = ++calcSeqRef.current;
+      setCalculatingCoords({ lat: parcel.lat, lng: parcel.lng });
+      setLoaderStatus('working');
+      setIsCalculatingGps(true);
+
+      calcTimersRef.current.tLatency = setTimeout(() => {
+        if (calcSeqRef.current === seq) {
+          setLoaderStatus('done');
+          calcTimersRef.current.tHide = setTimeout(() => {
+            if (calcSeqRef.current === seq) {
+              setIsCalculatingGps(false);
+            }
+          }, 600);
+        }
+      }, 1400);
+    } else {
+      setView('console');
     }
-    setView('console');
   };
 
   // Execute CSV Blob creation and download logic
@@ -1235,7 +1328,7 @@ export default function StrataSkyMobbinApp() {
               return (
                 <button
                   key={p.name}
-                  onClick={() => setSelectedZone({ ...p, isFarmable: true })}
+                  onClick={() => handlePresetSelect(p)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                     active
                       ? 'bg-[#111111] text-white shadow-xs'
@@ -1253,11 +1346,127 @@ export default function StrataSkyMobbinApp() {
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 p-6 overflow-hidden">
           {/* Left Column: Interactive Leaflet Map with Floating Search Bar */}
           <div className="lg:col-span-7 h-full min-h-[460px] rounded-[32px] overflow-hidden border border-[#EEEEEE] shadow-xs relative bg-[#F7F7F7]">
-            <DynamicMap onSelect={setSelectedZone} selected={selectedZone} />
+            <DynamicMap onSelect={handleZoneSelect} selected={selectedZone} />
           </div>
 
           {/* Right Column: Structured Telemetry & Crop Rotations Scroll */}
-          <div className="lg:col-span-5 h-full overflow-y-auto space-y-4 pr-1 console-scroll">
+          <div className="lg:col-span-5 h-full relative">
+            {/* Full Right-Panel GPS Parcel Calculation Overlay with LatticeLoader */}
+            {isCalculatingGps && (
+              <div
+                className={`absolute inset-0 z-30 rounded-[28px] p-6 flex flex-col items-center justify-center text-center transition-all duration-300 border shadow-md overflow-hidden ${
+                  loaderStatus === 'error'
+                    ? 'bg-[#111111] text-white border-[#FF3B30]/30'
+                    : 'bg-[#F7F7F7] text-[#111111] border-[#EEEEEE]'
+                }`}
+              >
+                {/* Subtle Ambient Radial Glow */}
+                <div
+                  className={`absolute inset-0 pointer-events-none transition-opacity duration-300 ${
+                    loaderStatus === 'error'
+                      ? 'opacity-40 bg-[radial-gradient(circle_at_center,rgba(255,59,48,0.25)_0%,transparent_70%)]'
+                      : 'opacity-30 bg-[radial-gradient(circle_at_center,rgba(52,199,89,0.25)_0%,transparent_70%)]'
+                  }`}
+                />
+
+                <div className="relative z-10 w-full max-w-sm flex flex-col items-center text-center space-y-4">
+                  {/* Status Pill Badge */}
+                  <div
+                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all duration-300 shadow-2xs ${
+                      loaderStatus === 'error'
+                        ? 'bg-[#FF3B30] text-white'
+                        : 'bg-white text-[#111111] border border-[#E5E5E7]'
+                    }`}
+                  >
+                    {loaderStatus === 'error' ? (
+                      <>
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>NON-ARABLE URBAN RESTRICTION</span>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            loaderStatus === 'done' ? 'bg-[#34C759]' : 'bg-[#34C759] animate-ping'
+                          }`}
+                        />
+                        <span className="font-mono text-[11px]">
+                          GPS PARCEL LOCK • {calculatingCoords.lat.toFixed(4)}°N,{' '}
+                          {calculatingCoords.lng.toFixed(4)}°E
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Headline & Subhead */}
+                  <div>
+                    <h2
+                      className={`text-2xl sm:text-3xl font-extrabold tracking-tight mb-2 transition-colors duration-300 ${
+                        loaderStatus === 'error' ? 'text-[#FF3B30]' : 'text-[#111111]'
+                      }`}
+                      style={{
+                        fontFamily:
+                          '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif',
+                        letterSpacing: '-0.03em',
+                      }}
+                    >
+                      {loaderStatus === 'error'
+                        ? 'Non-Arable Terrain'
+                        : loaderStatus === 'done'
+                        ? 'Telemetry Synchronized'
+                        : 'Calculating GPS Parcel'}
+                    </h2>
+                    <p
+                      className={`text-xs sm:text-sm max-w-xs transition-colors duration-300 leading-relaxed ${
+                        loaderStatus === 'error' ? 'text-white/80' : 'text-[#666666]'
+                      }`}
+                    >
+                      {loaderStatus === 'error'
+                        ? 'Coordinates correspond to urban infrastructure. Telemetry export blocked.'
+                        : loaderStatus === 'done'
+                        ? 'Sentinel-2 multispectral bands & NASA POWER grid resolved.'
+                        : 'Querying Sentinel-2 multispectral surface bands & soil classifications...'}
+                    </p>
+                  </div>
+
+                  {/* LatticeLoader Component from React Bits */}
+                  <div
+                    className={`w-full rounded-2xl p-4 shadow-xs transition-all duration-300 border flex items-center justify-center ${
+                      loaderStatus === 'error'
+                        ? 'bg-[#1C1C1E] border-[#FF3B30]/40 text-white'
+                        : 'bg-white border-[#E5E5E7] text-[#111111]'
+                    }`}
+                  >
+                    <LatticeLoader
+                      status={loaderStatus}
+                      label="Analyzing"
+                      doneLabel="Done in"
+                      errorLabel="Failed after"
+                      pattern="arrow"
+                      grid={3}
+                      shape="round"
+                      doneColor="#22c55e"
+                      errorColor="#ef4444"
+                      cellSize={6}
+                      gap={2}
+                      fontSize={14}
+                      step={90}
+                      idleOpacity={0.14}
+                      glow
+                      glowColor={loaderStatus === 'error' ? '#FF3B30' : '#000000'}
+                      showTimer
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Structured Telemetry & Crop Rotations Scroll */}
+            <div
+              className={`h-full overflow-y-auto space-y-4 pr-1 console-scroll transition-opacity duration-200 ${
+                isCalculatingGps ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+            >
             {/* Selected Location Header Card */}
             <div className="bg-[#F7F7F7] rounded-[24px] p-6 space-y-4">
               <div className="flex items-center justify-between">
@@ -1321,8 +1530,8 @@ export default function StrataSkyMobbinApp() {
                   {UAE_FARM_PRESETS.map((p) => (
                     <button
                       key={p.name}
-                      onClick={() => setSelectedZone({ ...p, isFarmable: true })}
-                      className="px-3 py-1 bg-white rounded-full text-xs font-semibold text-[#111111] hover:bg-[#F1F1F1] transition-colors shadow-xs"
+                      onClick={() => handlePresetSelect(p)}
+                      className="px-3 py-1 bg-white rounded-full text-xs font-semibold text-[#111111] hover:bg-[#F1F1F1] transition-colors shadow-xs cursor-pointer"
                     >
                       {p.name}
                     </button>
@@ -1493,6 +1702,7 @@ export default function StrataSkyMobbinApp() {
                   radius={28}
                 />
               </div>
+            </div>
             </div>
           </div>
         </div>
