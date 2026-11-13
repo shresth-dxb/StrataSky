@@ -42,4 +42,6 @@ next-env.d.ts
 
 # agent / IDE
 .gemini/
+.extracted_data/
+Screenshot_*.png
 

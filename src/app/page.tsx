@@ -1868,44 +1868,31 @@ export default function StrataSkyMobbinApp() {
                   <div className="space-y-4">
                     {/* Strategy Switcher Pills */}
                     <div className="bg-[#F7F7F7] rounded-[24px] p-5 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[#111111] uppercase tracking-wider">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-[#111111] uppercase tracking-wider shrink-0">
                           Compare 3 Rotation Protocols
                         </span>
-                        <div className="inline-flex bg-white p-1 rounded-full text-xs font-semibold shadow-xs">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStrategyId("baseline")}
-                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                              selectedStrategyId === "baseline"
-                                ? "bg-[#111111] text-white"
-                                : "text-[#888888] hover:text-[#111111]"
-                            }`}
-                          >
-                            Baseline
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStrategyId("oasis")}
-                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                              selectedStrategyId === "oasis"
-                                ? "bg-[#111111] text-white"
-                                : "text-[#888888] hover:text-[#111111]"
-                            }`}
-                          >
-                            Oasis Canopy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedStrategyId("saline")}
-                            className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
-                              selectedStrategyId === "saline"
-                                ? "bg-[#111111] text-white"
-                                : "text-[#888888] hover:text-[#111111]"
-                            }`}
-                          >
-                            Biosaline Quinoa
-                          </button>
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-full text-xs font-semibold shadow-xs overflow-x-auto max-w-full">
+                          {(selectedZone.strategies || []).map((s, idx) => {
+                            const isSelected = selectedStrategyId === s.id;
+                            const slotName = idx === 0 ? "Baseline" : idx === 1 ? "Strategy B" : "Strategy C";
+                            const cropPreview = s.tagline.split('+')[0].trim().split(' ')[0] || s.name.split(' ')[0];
+                            return (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => setSelectedStrategyId(s.id)}
+                                className={`px-2.5 py-1 rounded-full transition-all cursor-pointer whitespace-nowrap text-[11px] font-semibold ${
+                                  isSelected
+                                    ? "bg-[#111111] text-white shadow-2xs"
+                                    : "text-[#666666] hover:text-[#111111]"
+                                }`}
+                                title={s.name}
+                              >
+                                {slotName}: {cropPreview}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -2063,23 +2050,30 @@ export default function StrataSkyMobbinApp() {
 
                       {/* Top Match Recommendation Box */}
                       {(() => {
-                        const recStrat =
-                          farmerGoal === "saveWater"
-                            ? selectedZone.strategies?.[2] || selectedZone.strategies?.[1]
-                            : farmerGoal === "maximizeProfit" || farmerGoal === "rebuildSoil"
-                            ? selectedZone.strategies?.[1]
-                            : selectedZone.strategies?.[2] || selectedZone.strategies?.[1];
+                        const stratList = selectedZone.strategies || [];
+                        const scoresMap = selectedZone.priorityScores || ({} as any);
 
-                        const matchScore =
-                          farmerGoal === "saveWater"
-                            ? 97
-                            : farmerGoal === "maximizeProfit"
-                            ? 95
-                            : farmerGoal === "rebuildSoil"
-                            ? 93
-                            : farmerGoal === "lowerRisk"
-                            ? 96
-                            : 94;
+                        // Calculate real ranking for the active farmer goal
+                        const ranked = stratList.map((s) => {
+                          const goalScore = scoresMap[s.id]?.[farmerGoal] ?? 50;
+                          return {
+                            strategy: s,
+                            score: goalScore,
+                            name: s.name,
+                          };
+                        }).sort((a, b) => b.score - a.score);
+
+                        const topMatch = ranked[0];
+                        if (!topMatch) return null;
+                        const recStrat = topMatch.strategy;
+
+                        const goalDescriptions: Record<string, string> = {
+                          saveWater: `Consumes ${recStrat.waterUsageM3Ha.toLocaleString()} m³/ha/yr (${recStrat.waterSavingsPercent}% conservation over baseline), conserving valuable groundwater resources.`,
+                          maximizeProfit: `Delivers projected net margins of ${recStrat.profitPerHaAed.toLocaleString()} AED/ha through high-value commercial yields and low irrigation pumping overhead.`,
+                          rebuildSoil: `${recStrat.soilHealthGain}. Deploys organic nitrogen-fixing crops and biological amendments to restore soil organic carbon.`,
+                          lowerRisk: `Climate risk index evaluated at ${recStrat.climateRiskScore}/100, providing superior heat, drought, and salinity resilience.`,
+                          useLessFertilizer: `Reduces chemical fertilizer purchases by ${recStrat.fertilizerReductionPercent}% using symbiotic legumes and organic nutrient recycling.`,
+                        };
 
                         return (
                           <div className="bg-white p-4 rounded-2xl border border-[#34C759]/30 space-y-3">
@@ -2089,48 +2083,27 @@ export default function StrataSkyMobbinApp() {
                                 <span>#1 Recommended Strategy for Your Goal</span>
                               </span>
                               <span className="text-xs font-mono font-bold text-[#1E8236] bg-[#E8F5E9] px-2.5 py-0.5 rounded-full">
-                                {matchScore}% Match
+                                {topMatch.score}% Match
                               </span>
                             </div>
 
                             <div className="space-y-1">
-                              <h4 className="text-sm font-bold text-[#111111]">{recStrat?.name}</h4>
-                              <p className="text-xs text-[#555555] leading-relaxed">
-                                {farmerGoal === "saveWater" &&
-                                  "Consumes only 3,800 m³/ha/yr, achieving an 83% water reduction over conventional practices. Allows irrigation with high-salinity brackish wells or reject brine without exhausting freshwater tables."}
-                                {farmerGoal === "maximizeProfit" &&
-                                  "Delivers projected net profits of 34,800 AED/ha through high-value commercial date varieties (Khalas/Barhi) and companion citrus, while reducing power pumping overhead by 61%."}
-                                {farmerGoal === "rebuildSoil" &&
-                                  "Rebuilds Soil Organic Carbon from 0.3% to over 1.2% within 3 years. Sub-canopy shade and cowpea cover crop fix 120 kg atmospheric Nitrogen/ha directly into sandy desert soil."}
-                                {farmerGoal === "lowerRisk" &&
-                                  "Provides near-total immunity to summer heatwaves (>45°C) and groundwater salinity spikes (>12 dS/m). Halophytic roots thrive where conventional crops burn."}
-                                {farmerGoal === "useLessFertilizer" &&
-                                  "Reduces synthetic chemical fertilizer dependency by 80% through biochar amendments, halophyte mineral recycling, and natural Rhizobium nitrogen fixation."}
+                              <h4 className="text-sm font-bold text-[#111111]">{recStrat.name}</h4>
+                              <p className="text-[11px] font-semibold text-[#1E8236]">{recStrat.tagline}</p>
+                              <p className="text-xs text-[#555555] leading-relaxed pt-1">
+                                {goalDescriptions[farmerGoal] || recStrat.whySuggested}
                               </p>
                             </div>
 
                             {/* Score Matrix Across 3 Strategies */}
                             <div className="pt-2 border-t border-gray-100 space-y-2">
                               <span className="text-[10px] font-bold text-[#888888] uppercase">
-                                Comparative Strategy Score Matrix
+                                Comparative Strategy Score Matrix ({farmerGoal.replace(/([A-Z])/g, ' $1').toLowerCase()})
                               </span>
                               <div className="space-y-1.5">
-                                {[
-                                  {
-                                    name: "Strategy C: Biosaline Quinoa & Salicornia",
-                                    score: farmerGoal === "saveWater" ? 97 : farmerGoal === "lowerRisk" ? 96 : farmerGoal === "useLessFertilizer" ? 94 : 86,
-                                  },
-                                  {
-                                    name: "Strategy B: 3-Tier Oasis Agroforestry",
-                                    score: farmerGoal === "maximizeProfit" ? 95 : farmerGoal === "rebuildSoil" ? 93 : 82,
-                                  },
-                                  {
-                                    name: "Baseline Practice: Rhodes Grass",
-                                    score: farmerGoal === "saveWater" ? 10 : farmerGoal === "maximizeProfit" ? 35 : 18,
-                                  },
-                                ].map((item, idx) => (
+                                {ranked.map((item, idx) => (
                                   <div key={idx} className="flex items-center justify-between text-xs">
-                                    <span className="text-[#666666] truncate pr-2">{item.name}</span>
+                                    <span className="text-[#666666] truncate pr-2 font-medium">{item.name}</span>
                                     <div className="flex items-center gap-2 shrink-0">
                                       <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                         <div
