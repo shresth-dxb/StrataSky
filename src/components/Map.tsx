@@ -4,10 +4,17 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Search, X, Loader2 } from 'lucide-react';
-import { UaeFarmZone, UAE_FARM_PRESETS, validateLandUse } from '@/lib/landValidation';
+import {
+  UaeFarmZone,
+  UAE_FARM_PRESETS,
+  UAE_BOUNDS,
+  isWithinUaeBounds,
+  validateLandUse,
+} from '@/lib/landValidation';
+import { useLanguage } from '@/context/LanguageContext';
 
 export type { UaeFarmZone };
-export { UAE_FARM_PRESETS };
+export { UAE_FARM_PRESETS, UAE_BOUNDS, isWithinUaeBounds };
 
 interface NominatimSearchResult {
   place_id: number;
@@ -58,7 +65,24 @@ function MapUpdater({
       const lng = Number(e.latlng.lng.toFixed(4));
       const currentSeq = ++requestSeqRef.current;
 
-      // Immediate UI update while reverse-geocoding validates
+      // 1. Strict UAE Geographic Bounds Lock: Zero Foreign Calculations
+      if (!isWithinUaeBounds(lat, lng)) {
+        onSelect({
+          lat,
+          lng,
+          name: 'Outside UAE Territory',
+          emirate: 'Non-UAE Geographical Territory',
+          soilSummary: 'No soil profile: Location is outside United Arab Emirates boundaries.',
+          aquiferNote: 'Aquifer mapping calibrated exclusively for UAE national territory.',
+          isFarmable: false,
+          validationStatus: 'outside_uae',
+          rejectionReason:
+            'Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.',
+        });
+        return;
+      }
+
+      // 2. Immediate UI update while reverse-geocoding validates zoning
       onSelect({
         lat,
         lng,
@@ -86,6 +110,7 @@ export default function Map({
   selected: UaeFarmZone;
   onSelect: (z: UaeFarmZone) => void;
 }) {
+  const { lang } = useLanguage();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NominatimSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -114,6 +139,7 @@ export default function Map({
     };
   }, []);
 
+  // Search restricted exclusively to UAE (&countrycodes=ae)
   const searchLocations = useCallback(async (searchQuery: string) => {
     const trimmed = searchQuery.trim().slice(0, 80);
     if (trimmed.length < 2) {
@@ -131,7 +157,7 @@ export default function Map({
     setIsSearching(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=ae&addressdetails=1&accept-language=en&limit=5&q=${encodeURIComponent(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=ae&addressdetails=1&extratags=1&accept-language=en&limit=5&q=${encodeURIComponent(
           trimmed
         )}`,
         {
@@ -174,6 +200,24 @@ export default function Map({
     setResults([]);
     setIsOpen(false);
 
+    // Hard Boundary Check
+    if (!isWithinUaeBounds(lat, lng)) {
+      onSelect({
+        lat,
+        lng,
+        name: displayName || 'Outside UAE Territory',
+        emirate: 'Non-UAE Geographical Territory',
+        soilSummary: 'No soil profile: Location is outside United Arab Emirates boundaries.',
+        aquiferNote: 'Aquifer mapping calibrated exclusively for UAE national territory.',
+        isFarmable: false,
+        validationStatus: 'outside_uae',
+        rejectionReason:
+          'Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.',
+        zoom: 14,
+      });
+      return;
+    }
+
     // Immediate UI update while reverse-geocoding validates
     onSelect({
       lat,
@@ -215,7 +259,11 @@ export default function Map({
           <input
             type="text"
             className="map-search-input"
-            placeholder="Search UAE farms, oases, or landmarks..."
+            placeholder={
+              lang === 'ar'
+                ? 'ابحث عن مزارع الإمارات، الواحات، أو الأحواض الزراعية...'
+                : 'Search UAE farms, oases, or agricultural basins...'
+            }
             value={query}
             onChange={(e) => {
               const val = e.target.value;
@@ -310,7 +358,9 @@ export default function Map({
               color: '#86868B',
             }}
           >
-            No locations found for &quot;{query}&quot;
+            {lang === 'ar'
+              ? `لم يتم العثور على مواقع في الإمارات لـ "${query}"`
+              : `No UAE locations found for "${query}"`}
           </div>
         )}
       </div>
@@ -318,6 +368,12 @@ export default function Map({
       <MapContainer
         center={[selected.lat, selected.lng]}
         zoom={selected.zoom || 8}
+        minZoom={7}
+        maxBounds={[
+          [22.45, 51.45],
+          [26.25, 56.55],
+        ]}
+        maxBoundsViscosity={1.0}
         style={{ width: '100%', height: '100%' }}
       >
         <TileLayer
@@ -326,13 +382,13 @@ export default function Map({
         />
         <MapUpdater onSelect={onSelect} selected={selected} />
         <Marker
-          icon={pinGreen}
+          icon={isFarmable ? pinGreen : pinRed}
           position={[selected.lat, selected.lng]}
         >
           <Popup>
             <div
               style={{
-                color: '#1E8236',
+                color: isFarmable ? '#1E8236' : '#FF3B30',
                 fontWeight: 600,
                 fontSize: '11px',
                 textTransform: 'uppercase',
@@ -340,9 +396,32 @@ export default function Map({
                 marginBottom: '2px',
               }}
             >
-              Verified Agricultural Parcel
+              {isFarmable
+                ? lang === 'ar'
+                  ? 'أرض زراعية معتمدة'
+                  : 'Verified Agricultural Parcel'
+                : selected.validationStatus === 'outside_uae'
+                ? lang === 'ar'
+                  ? 'خارج أراضي الإمارات'
+                  : 'Outside UAE Territory'
+                : lang === 'ar'
+                ? 'منطقة غير زراعية'
+                : 'Non-Arable Zone'}
             </div>
             <div style={{ color: '#111111', fontWeight: 600, fontSize: '13px' }}>{selected.name}</div>
+            {selected.rejectionReason && (
+              <div
+                style={{
+                  color: '#6E6E73',
+                  fontSize: '11px',
+                  marginTop: '4px',
+                  lineHeight: '1.4',
+                  maxWidth: '220px',
+                }}
+              >
+                {selected.rejectionReason}
+              </div>
+            )}
           </Popup>
         </Marker>
       </MapContainer>

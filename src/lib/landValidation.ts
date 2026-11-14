@@ -61,6 +61,8 @@ export interface FarmerPriorityScores {
   overallSuitabilityIndex: number; // 0-100
 }
 
+export type LandValidationStatus = "valid" | "outside_uae" | "non_arable";
+
 export interface UaeFarmZone {
   lat: number;
   lng: number;
@@ -71,13 +73,25 @@ export interface UaeFarmZone {
   zoom?: number;
   isFarmable?: boolean;
   detectedType?: string;
+  validationStatus?: LandValidationStatus;
+  blockedPlaceName?: string;
   rejectionReason?: string;
 
-  // Enhanced AI Telemetry
+  // Enhanced AI Telemetry (only populated for verified arable land)
   nutrients?: SoilNutrientProfile;
   climate?: ClimateRainfallProfile;
   strategies?: CropRotationStrategy[];
   priorityScores?: Record<"baseline" | "oasis" | "saline", FarmerPriorityScores>;
+}
+
+// UAE Strict Geographical Bounding Box: [[22.45, 51.45], [26.25, 56.55]]
+export const UAE_BOUNDS: [[number, number], [number, number]] = [
+  [22.45, 51.45],
+  [26.25, 56.55],
+];
+
+export function isWithinUaeBounds(lat: number, lng: number): boolean {
+  return lat >= 22.45 && lat <= 26.25 && lng >= 51.45 && lng <= 56.55;
 }
 
 /**
@@ -87,8 +101,7 @@ export interface UaeFarmZone {
 export function deriveUaeAgriTelemetry(
   lat: number,
   lng: number,
-  isFarmable = true,
-  fallbackPreset?: UaeFarmZone
+  isFarmable = true
 ): {
   nutrients: SoilNutrientProfile;
   climate: ClimateRainfallProfile;
@@ -190,7 +203,7 @@ export function deriveUaeAgriTelemetry(
     soilTaxonomy = "Typic Torripsamments & Aridic Arenosols (UAE Union Atlas)";
   }
 
-  // Monthly Rainfall distribution array (NCM / UAE.Stat historical profile: peak in Jan-Feb, drought in Jun-Aug)
+  // Monthly Rainfall distribution array (NCM / UAE.Stat historical profile)
   const rainWeight = baseRain / 100;
   const monthlyRainfallMm = [
     Number((18 * rainWeight).toFixed(1)),
@@ -251,7 +264,10 @@ export function deriveUaeAgriTelemetry(
     boron: {
       value: boronVal,
       rating: boronVal > 2.0 ? "Elevated" : "Safe",
-      notes: boronVal > 2.0 ? "Watch for boron sensitivity in traditional citrus; quinoa/salicornia immune." : "Within safe agronomic tolerance range.",
+      notes:
+        boronVal > 2.0
+          ? "Watch for boron sensitivity in traditional citrus; quinoa/salicornia immune."
+          : "Within safe agronomic tolerance range.",
     },
     ph: pH,
     salinityEC: baseSalinity,
@@ -284,7 +300,6 @@ export function deriveUaeAgriTelemetry(
     nasaSolarMj: Number((19.2 + (25.5 - lat) * 0.8).toFixed(1)),
   };
 
-  // 3 Distinct Rotation Strategies trained on ICBA biosaline research & NASA Earth observations
   const strategies: CropRotationStrategy[] = [
     {
       id: "baseline",
@@ -387,7 +402,6 @@ export function deriveUaeAgriTelemetry(
     },
   ];
 
-  // Farmer Priority Scores (0 - 100)
   const priorityScores: Record<"baseline" | "oasis" | "saline", FarmerPriorityScores> = {
     baseline: {
       maximizeProfit: 35,
@@ -418,7 +432,7 @@ export function deriveUaeAgriTelemetry(
   return { nutrients, climate, strategies, priorityScores };
 }
 
-// 4 Verified UAE Presets enriched with AI telemetry
+// 4 Verified UAE Agricultural Presets
 export const UAE_FARM_PRESETS: UaeFarmZone[] = [
   {
     lat: 24.2075,
@@ -428,6 +442,8 @@ export const UAE_FARM_PRESETS: UaeFarmZone[] = [
     soilSummary: "Deep sandy loam suited for multi-tier date palm canopies",
     aquiferNote: "Historic Falaj channel zone — moderate groundwater salinity (4.8 dS/m)",
     isFarmable: true,
+    validationStatus: "valid",
+    detectedType: "Oasis Farmland",
     ...deriveUaeAgriTelemetry(24.2075, 55.7447, true),
   },
   {
@@ -438,6 +454,8 @@ export const UAE_FARM_PRESETS: UaeFarmZone[] = [
     soilSummary: "Alluvial gravel plains fed by Hajar mountain wadi runoff",
     aquiferNote: "High seasonal evaporation — shade canopy cuts water loss by 55%",
     isFarmable: true,
+    validationStatus: "valid",
+    detectedType: "Alluvial Farmland",
     ...deriveUaeAgriTelemetry(25.2881, 55.8814, true),
   },
   {
@@ -448,6 +466,8 @@ export const UAE_FARM_PRESETS: UaeFarmZone[] = [
     soilSummary: "Hyper-arid dune sand over ancient fossil groundwater lens",
     aquiferNote: "Extreme solar heat — requires windbreak palms and salt-tolerant crops (12.8 dS/m)",
     isFarmable: true,
+    validationStatus: "valid",
+    detectedType: "Desert Oasis Parcel",
     ...deriveUaeAgriTelemetry(23.1333, 53.7667, true),
   },
   {
@@ -458,6 +478,8 @@ export const UAE_FARM_PRESETS: UaeFarmZone[] = [
     soilSummary: "Saline sandy soil tested for halophyte and quinoa rotations",
     aquiferNote: "Brackish groundwater (14.2 dS/m) — ideal for Quinoa and Salicornia rotation",
     isFarmable: true,
+    validationStatus: "valid",
+    detectedType: "Biosaline Research Parcel",
     ...deriveUaeAgriTelemetry(25.0935, 55.3897, true),
   },
 ];
@@ -467,55 +489,198 @@ function sanitizeString(input?: string, maxLen = 100): string {
   return input.trim().replace(/[\x00-\x1F\x7F]/g, "").slice(0, maxLen);
 }
 
+// Explicit Blocklists per agricultural zoning specification
+const KEYWORD_BLOCKLIST = [
+  "airport",
+  "industrial",
+  "mall",
+  "highway",
+  "street",
+  "lane",
+  "hotel",
+  "tower",
+  "port",
+  "terminal",
+  "city center",
+  "city centre",
+];
+
+const AVIATION_TRANSIT_CATEGORIES = ["aeroway", "highway", "railway", "port"];
+const AVIATION_TRANSIT_TYPES = [
+  "aeroway",
+  "airport",
+  "runway",
+  "airfield",
+  "terminal",
+  "aerodrome",
+  "highway",
+  "road",
+  "street",
+  "lane",
+  "motorway",
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+  "service",
+  "residential",
+  "railway",
+  "station",
+  "subway",
+  "tram",
+  "bus_stop",
+  "port",
+  "ferry_terminal",
+  "parking",
+  "bridge",
+  "tunnel",
+];
+
+const URBAN_INDUSTRIAL_CATEGORIES = [
+  "industrial",
+  "commercial",
+  "retail",
+  "residential",
+  "building",
+  "construction",
+  "military",
+  "shop",
+  "office",
+  "healthcare",
+  "man_made",
+];
+
+const URBAN_INDUSTRIAL_TYPES = [
+  "industrial",
+  "commercial",
+  "retail",
+  "residential",
+  "building",
+  "construction",
+  "military",
+  "warehouse",
+  "factory",
+  "depot",
+  "landfill",
+  "garages",
+  "cemetery",
+  "subdivision",
+];
+
+const LANDMARK_RECREATION_CATEGORIES = ["tourism", "amenity", "leisure", "historic"];
+const LANDMARK_RECREATION_TYPES = [
+  "tourism",
+  "landmark",
+  "hotel",
+  "motel",
+  "resort",
+  "museum",
+  "theme_park",
+  "attraction",
+  "amenity",
+  "mall",
+  "hospital",
+  "clinic",
+  "school",
+  "university",
+  "college",
+  "mosque",
+  "place_of_worship",
+  "leisure",
+  "golf_course",
+  "stadium",
+  "sports_centre",
+  "pitch",
+  "park",
+  "water_park",
+];
+
+const WATER_BODY_TYPES = [
+  "water",
+  "waterway",
+  "bay",
+  "strait",
+  "coastline",
+  "sea",
+  "ocean",
+  "lake",
+  "reservoir",
+  "canal",
+  "basin",
+  "dock",
+];
+
+const ALLOWED_AGRICULTURAL_TYPES = [
+  "farmland",
+  "farm",
+  "orchard",
+  "plant_nursery",
+  "allotments",
+  "meadow",
+  "grassland",
+  "scrub",
+  "heath",
+  "sand",
+  "desert",
+  "bare_rock",
+  "oasis",
+  "nature_reserve",
+  "greenfield",
+  "farmyard",
+];
+
 export async function validateLandUse(
   lat: number,
   lng: number,
   fallbackName?: string
 ): Promise<UaeFarmZone> {
-  // Input validation & boundary constraints
+  const cleanFallback = sanitizeString(fallbackName);
+
+  // 1. Strict Coordinate Verification: Zero Foreign Calculations Gate
   if (
     typeof lat !== "number" ||
     typeof lng !== "number" ||
     !Number.isFinite(lat) ||
     !Number.isFinite(lng) ||
-    lat < -90 ||
-    lat > 90 ||
-    lng < -180 ||
-    lng > 180
+    !isWithinUaeBounds(lat, lng)
   ) {
-    const telemetry = deriveUaeAgriTelemetry(24.2075, 55.7447, true);
     return {
-      lat: 24.2075,
-      lng: 55.7447,
-      name: "Al Ain Agricultural Zone",
-      emirate: "Abu Dhabi Emirate (24.2075°N, 55.7447°E)",
-      soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m`,
-      aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-      isFarmable: true,
-      detectedType: "Agricultural Parcel",
-      ...telemetry,
+      lat,
+      lng,
+      name: cleanFallback || "Outside UAE Territory",
+      emirate: "Non-UAE Geographical Territory",
+      soilSummary: "No soil profile: Location is outside United Arab Emirates boundaries.",
+      aquiferNote: "Aquifer mapping calibrated exclusively for UAE national territory.",
+      isFarmable: false,
+      validationStatus: "outside_uae",
+      rejectionReason:
+        "Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
     };
   }
 
-  const cleanFallback = sanitizeString(fallbackName);
-
-  // Check if coordinates correspond closely to one of the 4 verified presets
+  // 2. Fast check against 4 verified UAE Presets
   const matchedPreset = UAE_FARM_PRESETS.find(
     (p) => Math.abs(p.lat - lat) < 0.008 && Math.abs(p.lng - lng) < 0.008
   );
   if (matchedPreset) {
     const telemetry = deriveUaeAgriTelemetry(matchedPreset.lat, matchedPreset.lng, true);
-    return { ...matchedPreset, isFarmable: true, ...telemetry };
+    return {
+      ...matchedPreset,
+      isFarmable: true,
+      validationStatus: "valid",
+      ...telemetry,
+    };
   }
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 6500);
 
+    // Strict Nominatim reverse query with zoom=18, addressdetails=1, extratags=1
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
         lat
-      )}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1&accept-language=en`,
+      )}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1&extratags=1&accept-language=en`,
       {
         headers: { "User-Agent": "StrataSky-UAE-Farm-App/1.0" },
         signal: controller.signal,
@@ -528,240 +693,210 @@ export async function validateLandUse(
     }
 
     const data = await res.json();
-    const telemetry = deriveUaeAgriTelemetry(lat, lng, true);
 
-    // 1. Water Body: Unable to geocode or water tags
+    // Offshore / International or Maritime Waters Check
     if (data.error === "Unable to geocode") {
       return {
         lat,
         lng,
-        name: cleanFallback || "Coastal / Marine Zone",
-        emirate: `UAE Coastal Parcel (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: "Coastal / Shoreline Zone",
-        ...telemetry,
+        name: cleanFallback || "Offshore Water Zone",
+        emirate: "Maritime / International Waters",
+        soilSummary: "No terrestrial soil profile: Water body or offshore zone.",
+        aquiferNote: "Calibrated exclusively for UAE mainland agricultural zones.",
+        isFarmable: false,
+        validationStatus: "outside_uae",
+        rejectionReason:
+          "Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
       };
     }
 
     const addr = data.address || {};
-    const category = typeof data.category === "string" ? data.category.toLowerCase() : "";
-    const type = typeof data.type === "string" ? data.type.toLowerCase() : "";
-    const placeRank = typeof data.place_rank === "number" ? data.place_rank : 30;
-    const countryCode = typeof addr.country_code === "string" ? addr.country_code.toLowerCase() : "";
+    const countryCode = typeof addr.country_code === "string" ? addr.country_code.toLowerCase().trim() : "";
 
-    // Water Body check
-    const waterTypes = ["water", "bay", "strait", "coastline", "sea", "reservoir", "lake"];
+    // Hard Country Gate: Verify address.country_code === 'ae'
+    if (countryCode && countryCode !== "ae") {
+      const foreignCountry = sanitizeString(addr.country) || "Foreign Territory";
+      return {
+        lat,
+        lng,
+        name: cleanFallback || sanitizeString(data.name) || `${foreignCountry} Parcel`,
+        emirate: `${foreignCountry} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: "Cross-border territory detected. Telemetry restricted to UAE.",
+        aquiferNote: "StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
+        isFarmable: false,
+        validationStatus: "outside_uae",
+        rejectionReason:
+          "Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
+      };
+    }
+
+    // Inspect reverse-geocoding metadata
+    const category = typeof data.category === "string" ? data.category.toLowerCase().trim() : typeof (data as any).class === "string" ? (data as any).class.toLowerCase().trim() : "";
+    const type = typeof data.type === "string" ? data.type.toLowerCase().trim() : "";
+    const addressType = typeof (data as any).addresstype === "string" ? (data as any).addresstype.toLowerCase().trim() : "";
+    const displayName = typeof data.display_name === "string" ? data.display_name.trim() : "";
+    const extratags = (data.extratags || {}) as Record<string, string>;
+    const placeName =
+      cleanFallback ||
+      sanitizeString(data.name) ||
+      sanitizeString(displayName.split(",")[0]) ||
+      "Selected Zone";
+
+    // Text corpus for keyword and category checks
+    const combinedText = `${placeName} ${displayName} ${category} ${type} ${addressType} ${addr.road || ""} ${addr.industrial || ""} ${addr.amenity || ""} ${addr.building || ""} ${addr.commercial || ""} ${addr.aeroway || ""}`.toLowerCase();
+
+    // Check Water Bodies (Arabian Gulf, Gulf of Oman, lakes, canals)
     const isWater =
-      (category === "natural" && waterTypes.includes(type)) ||
-      waterTypes.includes(type) ||
-      (category === "boundary" && placeRank <= 8 && !addr.city && !addr.town && !addr.village && !addr.county);
+      category === "waterway" ||
+      (category === "natural" && (WATER_BODY_TYPES.includes(type) || type === "coastline" || type === "beach")) ||
+      WATER_BODY_TYPES.includes(type) ||
+      WATER_BODY_TYPES.includes(addressType) ||
+      extratags.natural === "water";
 
     if (isWater) {
-      const detectedName = sanitizeString(data.name) || "Coastal / Water Zone";
       return {
         lat,
         lng,
-        name: cleanFallback || detectedName || "Coastal Water Parcel",
-        emirate: `UAE Coastal Zone (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: `${detectedName} (${type || "coastal"})`,
-        ...telemetry,
+        name: placeName,
+        emirate: `${sanitizeString(addr.state) || "UAE Coastal Margin"} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: "Non-arable aquatic zone / open water body.",
+        aquiferNote: "StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
+        isFarmable: false,
+        validationStatus: "outside_uae",
+        rejectionReason:
+          "Outside UAE Territory: StrataSky telemetry is calibrated exclusively for United Arab Emirates agricultural zones.",
       };
     }
 
-    // Outside UAE check
-    if (countryCode && countryCode !== "ae") {
-      const detectedCountry = sanitizeString(addr.country) || "Regional Territory";
-      return {
-        lat,
-        lng,
-        name: cleanFallback || sanitizeString(data.name) || `${detectedCountry} Parcel`,
-        emirate: `${sanitizeString(addr.state) || detectedCountry} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: `${detectedCountry} Parcel`,
-        ...telemetry,
-      };
-    }
+    // Keyword Blocklist: Airport, Industrial, Mall, Highway, Street, Lane, Hotel, Tower, Port, Terminal, City Center
+    const matchedKeyword = KEYWORD_BLOCKLIST.find((kw) => {
+      const regex = new RegExp(`(^|[\\s,—-])${kw}($|[\\s,—-])`, "i");
+      return regex.test(combinedText);
+    });
 
-    // 2. Transit, Metro, Roads & Infrastructure
-    const transitSubstrings = [
-      "station",
-      "subway",
-      "monorail",
-      "tram",
-      "bus_stop",
-      "motorway",
-      "trunk",
-      "primary",
-      "secondary",
-      "residential",
-      "parking",
-      "bridge",
-      "tunnel",
-    ];
-    const isTransitCategory = ["railway", "highway", "aeroway"].includes(category);
-    const isTransitType = transitSubstrings.some((t) => type.includes(t));
+    // Aviation & Transit Block
+    const isAviationOrTransit =
+      AVIATION_TRANSIT_CATEGORIES.includes(category) ||
+      AVIATION_TRANSIT_TYPES.includes(type) ||
+      AVIATION_TRANSIT_TYPES.includes(addressType);
 
-    if (isTransitCategory || isTransitType) {
-      const roadName =
-        sanitizeString(data.name) ||
-        sanitizeString(addr.road) ||
-        sanitizeString(addr.railway) ||
-        sanitizeString(addr.aeroway) ||
-        "Transit / Corridor District";
-      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
-      return {
-        lat,
-        lng,
-        name: cleanFallback || roadName,
-        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: `${roadName} (${type || "transit"})`,
-        ...telemetry,
-      };
-    }
+    // Urban & Industrial Block
+    const isUrbanOrIndustrial =
+      URBAN_INDUSTRIAL_CATEGORIES.includes(category) ||
+      URBAN_INDUSTRIAL_TYPES.includes(type) ||
+      URBAN_INDUSTRIAL_TYPES.includes(addressType) ||
+      (category === "landuse" && URBAN_INDUSTRIAL_TYPES.includes(type));
 
-    // 3. Buildings, Commercial & Urban Blocks
-    const urbanCategories = [
-      "building",
-      "amenity",
-      "shop",
-      "office",
-      "tourism",
-      "leisure",
-      "man_made",
-      "historic",
-      "craft",
-      "healthcare",
-    ];
-    if (urbanCategories.includes(category)) {
-      const facilityName =
-        sanitizeString(data.name) ||
-        sanitizeString(addr.shop) ||
-        sanitizeString(addr.amenity) ||
-        sanitizeString(addr.building) ||
-        sanitizeString(data.display_name?.split(",")[0]) ||
-        "Urban Facility";
-      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
-      return {
-        lat,
-        lng,
-        name: cleanFallback || facilityName,
-        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: `${facilityName} (${type || "urban"})`,
-        ...telemetry,
-      };
-    }
+    // Landmarks & Recreation Block
+    const isLandmarkOrRecreation =
+      LANDMARK_RECREATION_CATEGORIES.includes(category) ||
+      LANDMARK_RECREATION_TYPES.includes(type) ||
+      LANDMARK_RECREATION_TYPES.includes(addressType);
 
-    // 4. Urban Landuse
-    const urbanLanduses = [
-      "residential",
-      "commercial",
-      "industrial",
-      "retail",
-      "construction",
-      "military",
-      "port",
-      "railway",
-      "garages",
-      "cemetery",
-      "landfill",
-    ];
-    if (category === "landuse" && urbanLanduses.includes(type)) {
-      const landuseName = sanitizeString(data.name) || `${type.toUpperCase()} District`;
-      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
-      return {
-        lat,
-        lng,
-        name: cleanFallback || landuseName,
-        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-        soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-        aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-        isFarmable: true,
-        detectedType: `${landuseName} (landuse: ${type})`,
-        ...telemetry,
-      };
-    }
-
-    // 5. Dense City Street / Suburb Check
-    const hasUrbanAddrKey = Boolean(
+    // Built Urban Structure (e.g. city street blocks with urban address tags)
+    const hasBuiltUrbanTag = Boolean(
       addr.building ||
-        addr.railway ||
         addr.shop ||
         addr.amenity ||
         addr.office ||
         addr.tourism ||
         addr.industrial ||
-        addr.commercial
+        addr.commercial ||
+        addr.aeroway ||
+        addr.railway
     );
-    const isNaturalDesert = category === "natural" && ["sand", "desert", "scrub", "bare_rock"].includes(type);
-    const isAgricultural =
-      category === "landuse" && ["farmland", "orchard", "farmyard", "meadow", "greenfield", "allotments"].includes(type);
 
+    // Check if place is strictly non-arable
     if (
-      hasUrbanAddrKey ||
-      (Boolean(addr.road || addr.neighbourhood || addr.suburb) &&
-        placeRank >= 26 &&
-        !isNaturalDesert &&
-        !isAgricultural)
+      matchedKeyword ||
+      isAviationOrTransit ||
+      isUrbanOrIndustrial ||
+      isLandmarkOrRecreation ||
+      hasBuiltUrbanTag
     ) {
-      const streetName =
-        sanitizeString(data.name) ||
-        sanitizeString(addr.road) ||
-        sanitizeString(addr.neighbourhood) ||
-        sanitizeString(addr.suburb) ||
-        "City District Block";
-      const emirateDistrict = sanitizeString(addr.city) || sanitizeString(addr.state) || "UAE Developed District";
       return {
         lat,
         lng,
-        name: cleanFallback || streetName,
-        emirate: `${emirateDistrict} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        name: placeName,
+        emirate: `${sanitizeString(addr.state) || sanitizeString(addr.city) || "UAE Developed District"} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+        soilSummary: "Classified as urban, transport, or industrial infrastructure.",
+        aquiferNote: "Agricultural telemetry not supported for non-arable parcels.",
+        isFarmable: false,
+        validationStatus: "non_arable",
+        blockedPlaceName: placeName,
+        detectedType: type || category || "urban_infrastructure",
+        rejectionReason: `Non-Arable Zone Blocked: ${placeName} is classified as urban, industrial, or transport infrastructure. Click any farm, oasis, or open desert plot to analyze.`,
+      };
+    }
+
+    // Explicitly ALLOW Arable & Open Rural Land in the UAE
+    const isExplicitlyAllowedType =
+      ALLOWED_AGRICULTURAL_TYPES.includes(type) ||
+      ALLOWED_AGRICULTURAL_TYPES.includes(category) ||
+      ALLOWED_AGRICULTURAL_TYPES.includes(extratags.landuse || "") ||
+      ALLOWED_AGRICULTURAL_TYPES.includes(extratags.natural || "");
+
+    const isNaturalOpenDesert =
+      category === "natural" && ["sand", "desert", "scrub", "heath", "bare_rock", "grassland"].includes(type);
+
+    const isFarmlandOrOpen =
+      isExplicitlyAllowedType ||
+      isNaturalOpenDesert ||
+      (category === "landuse" && ["farmland", "orchard", "meadow", "allotments"].includes(type)) ||
+      (!hasBuiltUrbanTag && !addr.road);
+
+    if (isFarmlandOrOpen) {
+      const telemetry = deriveUaeAgriTelemetry(lat, lng, true);
+      const emirateName =
+        sanitizeString(addr.state) ||
+        sanitizeString(addr.city) ||
+        sanitizeString(addr.county) ||
+        "UAE Agricultural Basin";
+
+      return {
+        lat,
+        lng,
+        name: placeName,
+        emirate: `${emirateName} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
         soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
         aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
         isFarmable: true,
-        detectedType: `${streetName} (Urban Street / District)`,
+        validationStatus: "valid",
+        detectedType: isNaturalOpenDesert
+          ? `Open Desert Terrain (${type})`
+          : isExplicitlyAllowedType
+          ? `Agricultural Zone (${type || "farmland"})`
+          : "Open Rural Parcel",
         ...telemetry,
       };
     }
 
-    // 6. Valid open barren land, desert, or agricultural land
-    const emirateName = sanitizeString(addr.state) || sanitizeString(addr.city) || sanitizeString(addr.county) || "UAE Rural Region";
-    const placeName =
-      cleanFallback || sanitizeString(data.name) || (isNaturalDesert ? `Desert ${type.toUpperCase()}` : "Custom UAE Field Parcel");
-
+    // Default Fallback: If not recognized as farmable open terrain, block safely
     return {
       lat,
       lng,
       name: placeName,
-      emirate: `${emirateName} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
-      soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m (${telemetry.nutrients.salinityClass})`,
-      aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • CO2 Sequestration: ${telemetry.nutrients.carbonSequestrationPotential} t/ha/yr`,
-      isFarmable: true,
-      detectedType: `Open Rural Land (${type || "desert"})`,
-      ...telemetry,
+      emirate: `${sanitizeString(addr.state) || "UAE Developed District"} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+      soilSummary: "Classified as non-agricultural or developed zone.",
+      aquiferNote: "Agricultural telemetry not supported for non-arable parcels.",
+      isFarmable: false,
+      validationStatus: "non_arable",
+      blockedPlaceName: placeName,
+      rejectionReason: `Non-Arable Zone Blocked: ${placeName} is classified as urban, industrial, or transport infrastructure. Click any farm, oasis, or open desert plot to analyze.`,
     };
   } catch {
+    // If reverse lookup fails but coordinates are within UAE bounds, provide safe open desert parcel with telemetry
     const telemetry = deriveUaeAgriTelemetry(lat, lng, true);
     return {
       lat,
       lng,
-      name: cleanFallback || "Custom UAE Field Parcel",
-      emirate: `Selected Point (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
+      name: cleanFallback || "Open UAE Agricultural Parcel",
+      emirate: `UAE Field Parcel (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`,
       soilSummary: `${telemetry.nutrients.soilTaxonomyGroup} — Salinity: ${telemetry.nutrients.salinityEC} dS/m`,
       aquiferNote: `Annual Rain: ${telemetry.climate.annualRainfallMm} mm/yr • Soil Moisture: ${telemetry.climate.smapSoilMoisturePercent}%`,
       isFarmable: true,
+      validationStatus: "valid",
+      detectedType: "Open Desert Land",
       ...telemetry,
     };
   }

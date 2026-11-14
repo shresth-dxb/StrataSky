@@ -43,3 +43,7 @@ next-env.d.ts
 # agent / IDE
 .gemini/
 
+# scratch & screenshots
+.extracted_data/
+Screenshot_*.png
+
